@@ -175,9 +175,10 @@ scripts/agent doctor    # check tools and repository state
 | `scripts/task check` | format check, lint, test, build: exactly what CI runs |
 | `scripts/agent start <type>/<slug>` | new worktree and branch from `origin/main` |
 | `scripts/agent commit "<type>: subject"` | Conventional Commit, checked by the hook |
-| `scripts/agent pr` | full check, push, open the pull request |
+| `scripts/agent ship "<type>: subject"` | commit, check, open the PR with auto-merge, wait for the merge, clean up |
+| `scripts/agent pr` | check, push, open the PR with auto-merge, without waiting |
 | `scripts/agent sync` | rebase onto `origin/main` |
-| `scripts/agent done` | after merge: remove the worktree and branch |
+| `scripts/agent done` | after a merge: remove the worktree and branch, update the main checkout |
 | `scripts/agent list` | worktrees, branches, and pull request state |
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
