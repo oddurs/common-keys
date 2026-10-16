@@ -250,8 +250,7 @@ final class Engine {
         case .flagsChanged:
             let keyCode = UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode))
             let now = ProcessInfo.processInfo.systemUptime
-            if doubleTap.update(keyCode: keyCode, flags: event.flags, trigger: prefs.convertTrigger, now: now)
-            {
+            if doubleTap.update(keyCode: keyCode, flags: event.flags, trigger: prefs.convertTrigger, now: now) {
                 convertLastWord(proxy)
             }
             return true

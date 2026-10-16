@@ -25,8 +25,7 @@ public struct RecentLayouts: Sendable {
 
 /// Which layout an app gets when it comes to the front, most considered first.
 public enum AppLayoutChoice {
-    public static func choose(recent: String?, pinned: String?, usual: String?, preferred: String?) -> String?
-    {
+    public static func choose(recent: String?, pinned: String?, usual: String?, preferred: String?) -> String? {
         // What you were just doing in this app beats any standing rule about it.
         recent ?? pinned ?? usual ?? preferred
     }
