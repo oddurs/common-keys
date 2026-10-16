@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- Internal: the scorer weighs named features instead of inline constants, so the weights can be fitted (no change in results).
+
 ## [0.1.1] - 2026-10-16
 
 ### Changed
