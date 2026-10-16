@@ -18,11 +18,15 @@ jobs:
       - name: Package
         run: |
           # ditto keeps the bundle's signature and extended attributes intact.
-          ditto -c -k --keepParent build/LangSmart.app "LangSmart-${GITHUB_REF_NAME}.zip"
-          shasum -a 256 "LangSmart-${GITHUB_REF_NAME}.zip" > "LangSmart-${GITHUB_REF_NAME}.zip.sha256"
+          # The asset names carry no version, so releases/latest/download/CommonKeys.zip
+          # always points at the newest build.
+          ditto -c -k --keepParent "build/Common Keys.app" CommonKeys.zip
+          ditto -c -k build/worldkey worldkey.zip
+          shasum -a 256 CommonKeys.zip > CommonKeys.zip.sha256
+          shasum -a 256 worldkey.zip > worldkey.zip.sha256
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes --title "LangSmart ${GITHUB_REF_NAME#v}" \
-            "LangSmart-${GITHUB_REF_NAME}.zip" "LangSmart-${GITHUB_REF_NAME}.zip.sha256"
+          gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes --title "Common Keys ${GITHUB_REF_NAME#v}" \
+            CommonKeys.zip CommonKeys.zip.sha256 worldkey.zip worldkey.zip.sha256

@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping. LangSmart stays small on purpose, so open an issue before starting anything large.
+Thanks for helping. Common Keys stays small on purpose, so open an issue before starting anything large.
 
 ## Setup
 
@@ -19,8 +19,8 @@ Every change goes through a pull request. `main` only moves forward when a pull 
 Each change gets its own worktree, branch, and pull request:
 
 ```sh
-scripts/agent start fix/short-words      # creates ../.worktrees/langsmart/fix/short-words
-cd ../.worktrees/langsmart/fix/short-words
+scripts/agent start fix/short-words      # creates ../.worktrees/common-keys/fix/short-words
+cd ../.worktrees/common-keys/fix/short-words
 # ... make the change ...
 scripts/agent commit "fix(detector): keep short words that read in both"
 scripts/agent pr                         # runs the full check, pushes, opens the PR

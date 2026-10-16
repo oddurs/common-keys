@@ -158,7 +158,7 @@ final class Engine {
     var preferredLayoutID: String? { layouts.first?.id }
     var candidates: [any Keyboard] { layouts }
 
-    /// The frontmost app's name when LangSmart is paused for it.
+    /// The frontmost app's name when Common Keys is paused for it.
     var pausedIn: String? {
         guard let app = frontApp, let id = app.bundleIdentifier, prefs.excludedApps.contains(id) else {
             return nil
@@ -193,7 +193,7 @@ final class Engine {
         noteRecent(id)
     }
 
-    /// A switch LangSmart makes on its own.
+    /// A switch Common Keys makes on its own.
     private func activate(_ id: String) {
         guard id != currentLayoutID else { return }
         expectedLayoutID = id
@@ -500,6 +500,7 @@ final class Engine {
 
     // MARK: Persistence
 
+    // The pre-rename folder name, kept so learned data carries over.
     private static let folder = URL.applicationSupportDirectory.appending(path: "LangSmart")
     private static let memoryURL = folder.appending(path: "memory.json")
     private static let statsURL = folder.appending(path: "stats.json")

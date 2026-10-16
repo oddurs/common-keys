@@ -5,6 +5,7 @@ set -eu
 # macOS ties the Accessibility grant to the app's signature. Ad-hoc signatures change with every
 # build, so every rebuild lost the grant. A certificate that stays put keeps it.
 
+# The pre-rename name, kept so existing installs keep their Accessibility grant.
 name="LangSmart Development"
 keychain="$HOME/Library/Keychains/login.keychain-db"
 
@@ -30,4 +31,4 @@ echo "==> generating '$name' (valid ten years)"
 echo "==> importing into the login keychain, usable by codesign"
 security import "$work/identity.p12" -k "$keychain" -P langsmart -T /usr/bin/codesign >/dev/null
 
-echo "==> done. Next: scripts/task build, then allow LangSmart in Accessibility one last time."
+echo "==> done. Next: scripts/task build, then allow Common Keys in Accessibility one last time."

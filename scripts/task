@@ -1,38 +1,44 @@
 #!/bin/sh
 set -eu
-# The one seam CI and git hooks call. Verbs: fmt fmt:check lint test build check.
+
+# The one seam CI and git hooks call. Verbs: fmt fmt:check lint test build check
 
 cd "$(dirname "$0")/.."
-sources="Package.swift Sources Tests"
 
-bundle() {
-    app="build/LangSmart.app"
-    bin="$(swift build -c release --show-bin-path)/LangSmart"
-    echo "==> bundling $app"
-    rm -rf "$app"
-    mkdir -p "$app/Contents/MacOS"
-    cp "$bin" "$app/Contents/MacOS/LangSmart"
-    cp Resources/Info.plist "$app/Contents/Info.plist"
-    # macOS ties the Accessibility grant to the signature. A stable certificate keeps it across
-    # rebuilds; an ad-hoc signature changes every build and loses it. scripts/dev-cert makes one.
+# Command Line Tools ship Swift Testing outside the default search paths;
+# Xcode does not need this.
+test_flags() {
+    dev="$(xcode-select -p)"
+    case "$dev" in
+    */CommandLineTools)
+        fw="$dev/Library/Developer/Frameworks"
+        lib="$dev/Library/Developer/usr/lib"
+        printf '%s\n' -Xswiftc -F -Xswiftc "$fw" -Xlinker -F -Xlinker "$fw" \
+            -Xlinker -rpath -Xlinker "$fw" -Xlinker -rpath -Xlinker "$lib"
+        ;;
+    esac
+}
+
+# macOS ties the Accessibility grant to the signature. A stable certificate keeps it across
+# rebuilds; an ad-hoc signature changes every build and loses it. scripts/dev-cert makes one.
+sign() {
     identity="LangSmart Development"
     if security find-certificate -c "$identity" >/dev/null 2>&1; then
-        echo "==> signing with '$identity'"
-        codesign --force --sign "$identity" --identifier com.oddurs.langsmart "$app"
+        echo "==> signing $1 with '$identity'"
+        codesign --force --sign "$identity" --identifier "$2" --options runtime "$1"
     else
-        echo "==> signing ad-hoc; run scripts/dev-cert so Accessibility access survives rebuilds"
-        codesign --force --sign - --identifier com.oddurs.langsmart "$app"
+        echo "==> signing $1 ad-hoc; run scripts/dev-cert so Accessibility access survives rebuilds"
+        codesign --force --sign - --identifier "$2" --options runtime "$1"
     fi
-    echo "==> built $app"
-    cp "$(swift build -c release --show-bin-path)/worldkey" build/worldkey
-    echo "==> built build/worldkey"
 }
+
+sources="Package.swift Sources Tests scripts/make-icon.swift"
 
 case "${1:-}" in
 fmt)
     echo "==> formatting"
     # shellcheck disable=SC2086
-    swift format format --in-place --recursive $sources
+    swift format --in-place --recursive $sources
     ;;
 fmt:check)
     echo "==> checking format"
@@ -40,33 +46,51 @@ fmt:check)
     swift format lint --strict --recursive $sources
     ;;
 lint)
+    "$0" fmt:check
     echo "==> building with warnings as errors"
     swift build -Xswiftc -warnings-as-errors
     ;;
 test)
-    echo "==> testing"
-    # Command Line Tools ship swift-testing outside the default search paths.
-    clt="/Library/Developer/CommandLineTools/Library/Developer"
-    if [ "$(xcode-select -p)" = "/Library/Developer/CommandLineTools" ]; then
-        swift test -Xswiftc -F -Xswiftc "$clt/Frameworks" \
-            -Xlinker -rpath -Xlinker "$clt/Frameworks" -Xlinker -rpath -Xlinker "$clt/usr/lib"
-    else
-        swift test
-    fi
+    echo "==> running tests"
+    # shellcheck disable=SC2046
+    swift test $(test_flags)
     ;;
 build)
-    echo "==> building release"
-    swift build -c release
-    bundle
+    # One build per architecture, joined with lipo: `--arch a --arch b`
+    # needs Xcode's build system, which Command Line Tools lack.
+    apps=""
+    clis=""
+    for arch in arm64 x86_64; do
+        echo "==> building release for $arch"
+        triple="$arch-apple-macosx14.4"
+        swift build -c release --triple "$triple"
+        bin="$(swift build -c release --triple "$triple" --show-bin-path)"
+        apps="$apps $bin/LangSmart"
+        clis="$clis $bin/worldkey"
+    done
+    # The executable keeps its pre-rename name; Info.plist's CFBundleExecutable points at it.
+    app="build/Common Keys.app"
+    echo "==> assembling $app"
+    rm -rf "$app"
+    mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+    # shellcheck disable=SC2086
+    lipo -create $apps -output "$app/Contents/MacOS/LangSmart"
+    cp Resources/Info.plist "$app/Contents/"
+    cp Resources/AppIcon.icns "$app/Contents/Resources/"
+    sign "$app" com.oddurs.langsmart
+    echo "==> built $app"
+    # shellcheck disable=SC2086
+    lipo -create $clis -output build/worldkey
+    sign build/worldkey worldkey
+    echo "==> built build/worldkey"
     ;;
 check)
-    "$0" fmt:check
     "$0" lint
     "$0" test
     "$0" build
     ;;
 *)
-    echo "usage: scripts/task fmt|fmt:check|lint|test|build|check" >&2
+    echo "usage: scripts/task {fmt|fmt:check|lint|test|build|check}" >&2
     exit 2
     ;;
 esac

@@ -23,9 +23,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         app.addItem(
             withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         app.addItem(
-            withTitle: "Quit LangSmart", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+            withTitle: "Quit Common Keys", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let root = NSMenu()
-        let item = NSMenuItem(title: "LangSmart", action: nil, keyEquivalent: "")
+        let item = NSMenuItem(title: "Common Keys", action: nil, keyEquivalent: "")
         item.submenu = app
         root.addItem(item)
         return root
@@ -53,7 +53,7 @@ final class SettingsWindow {
         let host = NSHostingController(rootView: SettingsView().environment(engine))
         host.sizingOptions = [.preferredContentSize]
         let window = NSWindow(contentViewController: host)
-        window.title = "LangSmart Settings"
+        window.title = "Common Keys Settings"
         window.styleMask = [.titled, .closable]
         window.isReleasedWhenClosed = false
         window.center()

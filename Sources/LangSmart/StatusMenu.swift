@@ -15,6 +15,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         self.openSettings = openSettings
         // New items go to the far left of the menu bar, which on a full bar with a notch means
         // hidden off-screen. Start next to the system icons instead; ⌘-dragging moves it from there.
+        // Keyed by the old name, as is autosaveName below, so the item keeps its place after the rename.
         let position = "NSStatusItem Preferred Position LangSmart"
         if UserDefaults.standard.object(forKey: position) == nil {
             UserDefaults.standard.set(Self.startPosition, forKey: position)
@@ -38,7 +39,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
             let layout = engine.currentLayout
             button.title = layout?.flag ?? "⌨︎"
             button.font = .systemFont(ofSize: 15)
-            // Dimmed, like a disabled menu item, while LangSmart is not fixing anything.
+            // Dimmed, like a disabled menu item, while Common Keys is not fixing anything.
             button.appearsDisabled = !engine.isWorking
             button.toolTip = [layout?.name, engine.pausedIn.map { "Paused in \($0)" }]
                 .compactMap { $0 }.joined(separator: " · ")
@@ -99,7 +100,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         let settings = action("Settings…", key: ",", perform: openSettings)
         settings.image = symbol("gearshape")
         menu.addItem(settings)
-        let quit = action("Quit LangSmart", key: "q") { NSApp.terminate(nil) }
+        let quit = action("Quit Common Keys", key: "q") { NSApp.terminate(nil) }
         quit.image = symbol("power")
         menu.addItem(quit)
     }
