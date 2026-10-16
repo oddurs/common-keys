@@ -100,9 +100,13 @@ struct SettingsView: View {
         "\(n) \(noun)\(n == 1 ? "" : "s")"
     }
 
-    /// Apps with a rule of the user's: pinned or paused. Learned ones need no rule, so they stay out.
+    /// Apps with a rule of the user's: pinned or paused. Learned ones need no rule, so they stay out,
+    /// and so do apps not installed here: the defaults pause editors this Mac may not have, and a
+    /// row of bare bundle identifiers tells nobody anything. Their rule still applies if they arrive.
     private var apps: [String] {
-        Set(engine.prefs.appLayouts.keys).union(engine.prefs.excludedApps).sorted {
+        Set(engine.prefs.appLayouts.keys).union(engine.prefs.excludedApps).filter {
+            NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) != nil
+        }.sorted {
             AppLabel.name(of: $0).localizedCaseInsensitiveCompare(AppLabel.name(of: $1)) == .orderedAscending
         }
     }
