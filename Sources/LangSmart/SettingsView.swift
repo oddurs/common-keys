@@ -3,7 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import WorldKey
 
-/// The whole of Settings. LangSmart works out the rest by watching how you type.
+/// The whole of Settings. Common Keys works out the rest by watching how you type.
 struct SettingsView: View {
     @Environment(Engine.self) private var engine
     @State private var launchError: String?
@@ -20,7 +20,7 @@ struct SettingsView: View {
                     Text(launchError).foregroundStyle(.red)
                 } else {
                     Text(
-                        "LangSmart fixes words typed on the wrong keyboard and learns as you go. There is nothing else to set up."
+                        "Common Keys fixes words typed on the wrong keyboard and learns as you go. There is nothing else to set up."
                     )
                     .foregroundStyle(.secondary)
                 }
@@ -59,7 +59,7 @@ struct SettingsView: View {
                 Text("Exceptions")
             } footer: {
                 Text(
-                    "Pin an app to one layout, or pause LangSmart in it. Terminals and code editors start paused."
+                    "Pin an app to one layout, or pause Common Keys in it. Terminals and code editors start paused."
                 )
                 .foregroundStyle(.secondary)
             }
@@ -80,7 +80,7 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .frame(width: 460)
         .fixedSize(horizontal: false, vertical: true)
-        .confirmationDialog("Forget everything LangSmart has learned?", isPresented: $confirmingReset) {
+        .confirmationDialog("Forget everything Common Keys has learned?", isPresented: $confirmingReset) {
             Button("Forget Everything", role: .destructive) { engine.forgetEverything() }
         } message: {
             Text("Learned words, mixed-up keys, each app's usual layout, and the stats in the menu.")

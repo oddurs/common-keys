@@ -1,26 +1,55 @@
-# LangSmart
+# Common Keys
 
-A menu bar app that fixes words typed on the wrong keyboard, for every keyboard macOS has. It
-learns which keys you mix up and which language you write in each app, and keeps you on the right
-one. It runs on **WorldKey**, an engine that reads keys on any keyboard and that other tools can use
-through the `worldkey` command.
+[![CI](https://github.com/oddurs/common-keys/actions/workflows/ci.yml/badge.svg)](https://github.com/oddurs/common-keys/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+A menu bar app that fixes words typed on the wrong keyboard layout, for every keyboard macOS has. **[oddurs.github.io/common-tools/keys](https://oddurs.github.io/common-tools/keys/)** · [Docs](https://oddurs.github.io/common-tools/keys/docs/)
 
 - Type `/etta ` on U.S. and it becomes `þetta `; `ghbdtn` becomes `привет`, `dkssud` becomes `안녕`.
+- It learns which keys you mix up and which language you write in each app, and keeps you on the right one.
 - ⌘Z right after a fix undoes it, and that word is left alone from then on.
 - Double-tap right ⌥ converts the word before the cursor; ⌥⇧Space switches layout.
 - Switching apps restores the layout you last used there, or the one you usually write in.
+- It runs on **WorldKey**, an engine that reads keys on any keyboard. Other tools can use it through the `worldkey` command.
 
-## Build
+Free and open source under the MIT licence. No network access, and what it learns stays on your Mac.
 
-    scripts/dev-cert       # once: stable signing identity, see below
-    scripts/task check     # format, lint, tests, release bundle
-    open build/LangSmart.app
+## Install
 
-Run `scripts/dev-cert` once before the first build. It puts a self-signed "LangSmart Development"
-certificate in your login keychain, and builds are signed with it. macOS ties the Accessibility
-grant to that certificate, so you allow LangSmart once and it survives rebuilds.
+Requires macOS 14.4 or later.
 
-Learned data lives in `~/Library/Application Support/LangSmart/memory.json`.
+1. Download [CommonKeys.zip](https://github.com/oddurs/common-keys/releases/latest/download/CommonKeys.zip), unzip it, and move **Common Keys** to Applications.
+2. Open it. The build is not notarized, so the first time macOS will say it can't verify the developer. Go to **System Settings › Privacy & Security** and click **Open Anyway**. Alternatively, run:
+
+   ```sh
+   xattr -dr com.apple.quarantine "/Applications/Common Keys.app"
+   ```
+
+3. Allow Common Keys in **System Settings › Privacy & Security › Accessibility** when it asks. It needs Accessibility to read key presses and type fixes back; it asks for nothing else.
+
+Release builds are signed ad-hoc, so macOS treats each update as a new app. After updating, turn Common Keys off and on again in Accessibility, or remove it there and allow it again.
+
+### The `worldkey` command
+
+Download [worldkey.zip](https://github.com/oddurs/common-keys/releases/latest/download/worldkey.zip), unzip it, and put `worldkey` on your `PATH`:
+
+```sh
+unzip worldkey.zip
+xattr -d com.apple.quarantine worldkey
+mv worldkey /usr/local/bin/
+```
+
+## Usage
+
+Common Keys lives in the menu bar as the flag of the current layout. The menu shows the day's words and fixes, your languages, the keys you mix up most, and the enabled keyboards to switch between.
+
+- **Fixing as you type** happens when a word ends. **Pause Fixing** in the menu stops it; the convert shortcut still works.
+- **Convert last word**: double-tap right ⌥ by default; Settings offers double-tap ⇧ or ⌃ instead, or off.
+- **Next layout**: ⌥⇧Space by default, changeable in Settings.
+- **Per-app layouts**: from the menu or Settings, pin the front app to one layout, or pause Common Keys in it. Terminals and code editors start paused.
+- **Forget Everything…** in Settings clears what it has learned.
+
+Learned data lives in `~/Library/Application Support/LangSmart/` (the folder keeps the app's former name).
 
 ## WorldKey
 
@@ -94,3 +123,53 @@ and `גם`, where leaving them alone is right. Judging a word takes about 0.13 m
 - Text typed in a converting input method is never fixed: it is the user's pick.
 - Korean 3-Set, romaja and shape-based Chinese methods are destinations for the convert shortcut
   only.
+
+## Build from source
+
+The Command Line Tools are enough; Xcode is not required.
+
+```sh
+scripts/dev-cert                          # once: a stable signing identity, see below
+scripts/task build                        # universal build → build/Common Keys.app and build/worldkey
+mv "build/Common Keys.app" /Applications/
+```
+
+`scripts/dev-cert` puts a self-signed "LangSmart Development" certificate in your login keychain, and
+builds are signed with it. macOS ties the Accessibility grant to that certificate, so you allow
+Common Keys once and it survives rebuilds. Without it, builds are signed ad-hoc and each one needs
+the grant again.
+
+## Development
+
+```sh
+scripts/setup           # once: wire the git hooks
+scripts/agent doctor    # check tools and repository state
+```
+
+| Command | Does |
+| --- | --- |
+| `scripts/task check` | format check, lint, test, build: exactly what CI runs |
+| `scripts/agent start <type>/<slug>` | new worktree and branch from `origin/main` |
+| `scripts/agent commit "<type>: subject"` | Conventional Commit, checked by the hook |
+| `scripts/agent pr` | full check, push, open the pull request |
+| `scripts/agent sync` | rebase onto `origin/main` |
+| `scripts/agent done` | after merge: remove the worktree and branch |
+| `scripts/agent list` | worktrees, branches, and pull request state |
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow.
+
+`swift build && .build/debug/LangSmart --snapshot out.png` renders the menu's cards in light and dark
+without opening the menu. `swift scripts/make-icon.swift` redraws the app icon.
+
+Layout:
+
+- `Sources/WorldKey`: the engine. Keys, keyboards, evidence and decisions, with no UI state.
+- `Sources/LangSmart`: the app: event tap and injection, status item and menu, Settings. The target
+  keeps the app's former name.
+- `Sources/WorldKeyCLI`: the `worldkey` command.
+- `Tests/WorldKeyTests`: unit tests, plus system and accuracy tests against the layouts and
+  dictionaries installed on the Mac.
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).
