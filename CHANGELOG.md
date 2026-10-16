@@ -6,6 +6,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Added
 
+- Learns from your corrections on this Mac: words you type and keep stop being changed, and how readily it fixes follows how you correct it, within fixed limits.
 - Thai, Georgian and Armenian words typed on the wrong keyboard are fixed. Typed on U.S., they are now fixed every time in testing, against 58%, 0% and 51% before.
 - Each language's spelling is learned on this Mac from its own dictionary, so names and words no dictionary has can still be told apart from wrong-keyboard noise.
 

@@ -35,6 +35,11 @@ public enum Split: String, Sendable, CaseIterable {
 public struct Example: Sendable {
     public var evidence: FeatureVector
     public var meant: Bool
+
+    public init(evidence: FeatureVector, meant: Bool) {
+        self.evidence = evidence
+        self.meant = meant
+    }
 }
 
 /// Fits the combiner's weights on examples the engine makes itself: every dictionary word typed on

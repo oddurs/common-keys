@@ -55,8 +55,14 @@ Common Keys lives in the menu bar as the flag of the current layout. The menu sh
   the Common Tools family and the app's version.
 
 Learned data lives in `~/Library/Application Support/LangSmart/` (the folder keeps the app's former name):
-`memory.json` holds learned words, mixed-up keys and each app's usual layout, and `stats.json` holds the
-menu's daily counts for the last month, never the words themselves.
+
+- `memory.json` holds learned words, mixed-up keys and each app's usual layout. It also holds the words
+  you keep, as salted hashes of the keys (never the text), and your adjustments to the engine's weights.
+- `stats.json` holds the menu's daily counts for the last month, never the words themselves.
+- `Words/` caches the word lists the character models are built from, taken from this Mac's own
+  spell-checking dictionaries.
+
+Forget Everything in Settings clears the first two. The third is rebuilt from the system as needed.
 
 ## WorldKey
 
@@ -88,7 +94,8 @@ The engine is a library, `WorldKey`, in layers. Each layer knows nothing of the 
      the spell checker's own words, a few at a time after launch, and cached;
    - for languages macOS has no dictionary for, a shipped word list (`WordLists`): Thai, Georgian
      and Armenian, from the Leipzig Corpora Collection;
-   - what the user taught (`Memory`).
+   - what the user taught (`Memory`): words corrected, keys mixed up, and words typed and kept three
+     times or more, which count as "you write this here".
 4. **Weights.** Each reading becomes a `FeatureVector`, and `Weights` turn the difference between two
    readings into a score. The weights are fitted, not chosen: `worldkey train` types dictionary words
    on their own keyboard (leave them alone) and on every other one (fix them back), and fits a
@@ -99,6 +106,13 @@ The engine is a library, `WorldKey`, in layers. Each layer knows nothing of the 
    generated result, so a change to it shows up in review. A second set, `trainedPrefix`, judges the
    start of a word still being typed, with "some word starts this way" in place of "this is a word".
    `worldkey eval --prefixes` gates it: no start of a correctly typed word may ever be changed.
+
+   On the Mac, every correction is also a lesson for the weights. A retype or the convert shortcut
+   says "fix this", ⌘Z after a fix says "don't" (counted double), a fix left standing weakly says
+   "right", and one word kept in twenty weakly says "leave words like this". Twenty lessons at a time
+   adjust the user's copy of the weights by logistic regression, pulled back toward the shipped ones.
+   Each weight stays within half its shipped size of where it shipped, and the threshold never moves:
+   a user can sharpen the engine, not teach it to fix everything.
 5. **Decisions.** `Detector` compares the readings and decides at the end of a word, mid-word,
    or when asked. It also says which language a word was meant in, which feeds per-app learning.
 

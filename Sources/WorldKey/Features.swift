@@ -40,6 +40,11 @@ public enum Feature: String, CaseIterable, Codable, CodingKeyRepresentable, Send
     case meantTypicality
     /// Both readings are dictionary words, as with `an` and `αν`: the hardest case to call.
     case bothKnown
+    /// The reading on screen is a word the user often types and keeps on that keyboard. Weighed by
+    /// `Memory.personalized`, not by the shipped weights: synthetic data has no kept words.
+    case shownKept
+    /// The candidate reading is a word the user often types and keeps on its keyboard.
+    case meantKept
 
     fileprivate static let index = Dictionary(uniqueKeysWithValues: allCases.enumerated().map { ($1, $0) })
 }
@@ -99,5 +104,7 @@ public struct Weights: Codable, Equatable, Sendable {
             .shownTypicality: 0,
             .meantTypicality: 0,
             .bothKnown: 0,
+            .shownKept: -3,
+            .meantKept: 3,
         ], threshold: 2)
 }

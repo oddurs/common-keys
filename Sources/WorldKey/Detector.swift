@@ -143,6 +143,8 @@ public struct Detector {
         var evidence = meant - base
         evidence[.bothKnown] = base[.knownWord] * meant[.knownWord]
         evidence[.taught] = memory.boost(strokes, from: current.id, to: candidate.id)
+        if memory.isKept(strokes, on: current.id) { evidence[.shownKept] = 1 }
+        if memory.isKept(strokes, on: candidate.id) { evidence[.meantKept] = 1 }
         evidence[.recognized] = Scorer.recognition(
             original, on: current, against: text, on: candidate, lexicon: lexicon)
         if let shown = lexicon.typicality(Scorer.core(original), on: current, complete: !prefix),

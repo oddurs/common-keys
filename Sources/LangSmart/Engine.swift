@@ -27,6 +27,11 @@ final class Engine {
     @ObservationIgnored private let hotKeys = HotKeys()
     @ObservationIgnored private let bubble = FixBubble()
     @ObservationIgnored private var lastFix: Fix?
+    /// Corrections waiting to adjust the weights, applied twenty at a time.
+    @ObservationIgnored private var lessons: [(example: Example, weight: Double)] = []
+    /// The evidence for the last automatic fix, until the next word shows whether it stood.
+    @ObservationIgnored private var standing: FeatureVector?
+    @ObservationIgnored private var wordsSinceSample = 0
     @ObservationIgnored private var doubleTap = DoubleTap()
 
     @ObservationIgnored private var pendingSave: Task<Void, Never>?
@@ -313,9 +318,14 @@ final class Engine {
     private func endWord(with boundary: KeyStroke, _ proxy: CGEventTapProxy) -> Bool {
         let word = tracker.currentWord
         if let retype = tracker.end(with: boundary, now: .now) { learn(retype) }
+        // A fix that survived to the next word was probably right.
+        if let fixed = standing {
+            lesson(fixed, meant: true, weight: 0.3)
+            standing = nil
+        }
         guard let word, let from = layout(word.layoutID) else { return true }
 
-        let detector = Detector()
+        let detector = detector()
         let decision =
             prefs.autoCorrect
             ? detector.decide(
@@ -328,6 +338,7 @@ final class Engine {
         guard let decision, let to = layout(decision.targetID) else {
             stats.recordWord(on: from.id, in: app, at: .now)
             noteRecent(currentLayoutID)
+            keep(word.strokes, typedIn: from, detector: detector)
             return true
         }
 
@@ -340,8 +351,37 @@ final class Engine {
         noteRecent(to.id)
         stats.recordWord(on: to.id, in: app, at: .now)
         stats.recordFix(at: .now)
+        standing = detector.evidence(word.strokes, typedIn: from, meantFor: to, memory: memory, lexicon: lexicon)
         remember(Fix(strokes: word.strokes, boundary: boundary, from: from, to: to, automatic: true))
         return false
+    }
+
+    /// The engine as this user has taught it: shipped weights with their adjustments.
+    private func detector(minLength: Int = 2) -> Detector {
+        Detector(minLength: minLength, weights: memory.personalized(.trained))
+    }
+
+    /// A word left as typed counts toward the words the user writes on that keyboard, and now and
+    /// then as a mild lesson that reading it on another keyboard would have been wrong.
+    private func keep(_ strokes: [KeyStroke], typedIn keyboard: any Keyboard, detector: Detector) {
+        memory.noteKept(strokes, on: keyboard.id)
+        wordsSinceSample += 1
+        guard wordsSinceSample >= 20 else { return }
+        wordsSinceSample = 0
+        for other in candidates where other.id != keyboard.id && other.kind != .converting {
+            guard other.text(for: strokes) != keyboard.text(for: strokes) else { continue }
+            let evidence = detector.evidence(
+                strokes, typedIn: keyboard, meantFor: other, memory: memory, lexicon: lexicon)
+            lesson(evidence, meant: false, weight: 0.1)
+        }
+    }
+
+    private func lesson(_ evidence: FeatureVector, meant: Bool, weight: Double) {
+        lessons.append((Example(evidence: evidence, meant: meant), weight))
+        guard lessons.count >= 20 else { return }
+        memory.adjust(.trained, toward: lessons)
+        lessons = []
+        saveSoon()
     }
 
     /// The shortcut: undo the fix we just made, or convert the word before the cursor.
@@ -360,7 +400,7 @@ final class Engine {
             return NSSound.beep()
         }
 
-        let detector = Detector(minLength: 1)
+        let detector = detector(minLength: 1)
         guard let from = layout(word.layoutID), from.kind != .converting,
             let best = detector.alternatives(
                 word.strokes, typedIn: from, candidates: candidates, memory: memory, lexicon: lexicon
@@ -372,6 +412,9 @@ final class Engine {
         swap(word.strokes, from: from, to: to, erasing: erasing, then: boundary, switchLayout: true, proxy)
         if boundary == nil { tracker.relabelCurrent(to.id) } else { tracker.relabelPrevious(to.id) }
         noteRecent(to.id)
+        lesson(
+            detector.evidence(word.strokes, typedIn: from, meantFor: to, memory: memory, lexicon: lexicon),
+            meant: true, weight: 1)
         memory.learn(word.strokes, from: from, to: to)
         saveSoon()
         remember(Fix(strokes: word.strokes, boundary: boundary, from: from, to: to, automatic: false))
@@ -392,7 +435,12 @@ final class Engine {
             tracker.relabelPrevious(fix.from.id)
         }
         noteRecent(fix.from.id)
+        standing = nil
         if fix.automatic {
+            // Taking a fix back is the clearest lesson there is, so it counts double.
+            lesson(
+                detector().evidence(fix.strokes, typedIn: fix.from, meantFor: fix.to, memory: memory, lexicon: lexicon),
+                meant: false, weight: 2)
             memory.keep(fix.strokes, in: fix.from.id)
             stats.recordUndo(at: .now)
         } else {
@@ -458,6 +506,9 @@ final class Engine {
         guard let from = layout(retype.from), let to = layout(retype.to),
             from.text(for: retype.strokes) != to.text(for: retype.strokes)
         else { return }
+        lesson(
+            detector().evidence(retype.strokes, typedIn: from, meantFor: to, memory: memory, lexicon: lexicon),
+            meant: true, weight: 1)
         memory.learn(retype.strokes, from: from, to: to)
         saveSoon()
     }
