@@ -4,16 +4,21 @@ import WorldKey
 
 @MainActor
 struct DiagnosticTests {
-    @Test func lexiconOnThisMachine() {
+    @Test func detectorOnThisMachine() {
         let lexicon = SystemLexicon()
-        print("DIAG isWord привет:", lexicon.isWord("привет", language: "ru") as Any)
-        print("DIAG startsWord прив:", lexicon.startsWord("прив", language: "ru") as Any)
-        print("DIAG isWord hello:", lexicon.isWord("hello", language: "en") as Any)
-        print("DIAG isWord ghbdtn:", lexicon.isWord("ghbdtn", language: "en") as Any)
-        print("DIAG alphabet ru:", lexicon.alphabet(for: "ru") != nil)
+        let us = InputSources.keyboard("com.apple.keylayout.US")!
         let russian = InputSources.keyboard("com.apple.keylayout.Russian")!
-        print("DIAG russian language:", russian.language, russian.baseLanguage)
-        print("DIAG completions привет:", lexicon.words(startingWith: "привет", language: "ru"))
-        print("DIAG completions прив:", lexicon.words(startingWith: "прив", language: "ru"))
+        print(
+            "DIAG us:", us.language, us.baseLanguage, us.kind, "ru:", russian.language, russian.baseLanguage)
+        print("DIAG us text:", us.text(for: keys("ghbdtn")), "ru text:", russian.text(for: keys("ghbdtn")))
+        print("DIAG isWord ghbdtn us.language:", lexicon.isWord("ghbdtn", language: us.language) as Any)
+        print("DIAG startsWord ghbd us.language:", lexicon.startsWord("ghbd", language: us.language) as Any)
+        print(
+            "DIAG hasDictionary us:", lexicon.hasDictionary(us.language),
+            lexicon.hasDictionary(us.baseLanguage))
+        let alts = Detector().alternatives(
+            keys("ghbdtn"), typedIn: us, candidates: [us, russian], memory: Memory(), lexicon: lexicon)
+        print("DIAG alternatives:", alts)
+        print("DIAG Locale:", Locale.preferredLanguages, Locale.current.identifier)
     }
 }
