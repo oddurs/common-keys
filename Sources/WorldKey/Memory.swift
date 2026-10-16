@@ -26,11 +26,17 @@ public struct Memory: Codable, Equatable, Sendable {
     public var confusions: [Confusion] = []
     /// Words written per layout in each app, by bundle identifier.
     public var apps: [String: [String: Double]] = [:]
+    /// Words the user typed and kept, counted by a salted hash of keyboard and keys: never the words.
+    public var kept: [String: Double] = [:]
+    /// Random per Mac, so the hashes in `kept` mean nothing anywhere else.
+    public var salt: UInt64 = .random(in: .min ... .max)
+    /// The user's own adjustments to the shipped weights, learned from their corrections.
+    public var adjustments: [Feature: Double] = [:]
 
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case words, exceptions, confusions, apps
+        case words, exceptions, confusions, apps, kept, salt, adjustments
     }
 
     /// Every field is optional so memory from an older version still loads.
@@ -40,9 +46,15 @@ public struct Memory: Codable, Equatable, Sendable {
         exceptions = try container.decodeIfPresent([String: Exception].self, forKey: .exceptions) ?? [:]
         confusions = try container.decodeIfPresent([Confusion].self, forKey: .confusions) ?? []
         apps = try container.decodeIfPresent([String: [String: Double]].self, forKey: .apps) ?? [:]
+        kept = try container.decodeIfPresent([String: Double].self, forKey: .kept) ?? [:]
+        salt = try container.decodeIfPresent(UInt64.self, forKey: .salt) ?? .random(in: .min ... .max)
+        adjustments = try container.decodeIfPresent([Feature: Double].self, forKey: .adjustments) ?? [:]
     }
 
-    public var isEmpty: Bool { words.isEmpty && exceptions.isEmpty && confusions.isEmpty && apps.isEmpty }
+    public var isEmpty: Bool {
+        words.isEmpty && exceptions.isEmpty && confusions.isEmpty && apps.isEmpty && kept.isEmpty
+            && adjustments.isEmpty
+    }
 
     /// Counts a word written in `layoutID` while `app` was in front.
     public mutating func recordUse(app: String, layoutID: String) {

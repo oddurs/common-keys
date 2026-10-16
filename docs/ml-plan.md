@@ -187,6 +187,17 @@ slowest part, and its verdicts are cached.
 
 Each phase is one pull request and is useful alone. Phase 1 can ship even if phase 2 slips.
 
+## Status
+
+| # | State | Where it departed from the plan |
+|---|---|---|
+| 0 | Shipped (#9) | None. `worldkey eval` output was byte-identical before and after. |
+| 1 | Shipped (#13) | None. |
+| 2 | Shipped (#14) | Thai, Georgian and Armenian are covered; Leipzig has no Khmer corpus. Typicality (a z-score against the model's own words) replaced raw naturalness, which did not compare across languages. A shipped list also counts as positive evidence (`listedWord`). The evaluation sets aside words whose wrong-keyboard reading is itself a real word, for both engines. |
+| 3 | Shipped (#15) | Engine only: the app no longer fixes mid-word, since Settings was cut back to set-and-forget. |
+| 4 | This change | Kept words and weight adjustments live in `memory.json` rather than separate files, so Forget Everything clears them with the rest. Kept words are hashed keys per keyboard, not per language. |
+| 5 | Folded into 4 | No model switch or sensitivity readout: Settings stays set-and-forget. Forget Everything is the reset. |
+
 ## Rejected
 
 - **Foundation Models (the on-device system LLM).**

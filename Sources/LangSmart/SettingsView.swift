@@ -84,7 +84,9 @@ struct SettingsView: View {
         .confirmationDialog("Forget everything Common Keys has learned?", isPresented: $confirmingReset) {
             Button("Forget Everything", role: .destructive) { engine.forgetEverything() }
         } message: {
-            Text("Learned words, mixed-up keys, each app's usual layout, and the stats in the menu.")
+            Text(
+                "Learned words, mixed-up keys, each app's usual layout, the words you keep, what your corrections taught, and the stats in the menu."
+            )
         }
     }
 
