@@ -4,6 +4,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Fixed
+
+- Settings › Exceptions lists only apps installed on this Mac, instead of showing bare bundle identifiers for editors and terminals that are paused by default but not present.
+
 ### Changed
 
 - Internal: the scorer weighs named features instead of inline constants, so the weights can be fitted (no change in results).
