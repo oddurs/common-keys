@@ -77,8 +77,31 @@ struct SystemTests {
         #expect(decide(typed, on: icelandic, with: us) == nil)
     }
 
-    @Test func acrossScripts() {
+    /// A fresh CI runner can answer Russian spelling queries with no completions at first (#3).
+    /// Waiting keeps these tests about the detector rather than the spell server's start-up.
+    func waitForRussianDictionary() async throws {
+        let clock = ContinuousClock()
+        let start = clock.now
+        var polls = 0
+        while SystemLexicon().startsWord("прив", language: "ru") != true {
+            polls += 1
+            guard clock.now - start < .seconds(60) else {
+                Issue.record("the Russian spelling dictionary gave no completions for 60 seconds")
+                return
+            }
+            try await Task.sleep(for: .milliseconds(200))
+        }
+        if polls > 0 {
+            print("waited \(clock.now - start) for the Russian spelling dictionary")
+        }
+    }
+
+    @Test func russianOnUSIsFixed() async throws {
+        try await waitForRussianDictionary()
         #expect(decide("ghbdtn", on: us, with: russian)?.replacement == "привет")
+    }
+
+    @Test func acrossScripts() {
         #expect(decide("hello", on: russian, with: us)?.replacement == "hello")
         #expect(decide("hello", on: us, with: russian) == nil)
         #expect(decide("akuo", on: us, with: hebrew)?.replacement == "שלום")
@@ -94,7 +117,8 @@ struct SystemTests {
         #expect(decide("make", on: us, with: japanese) == nil)
     }
 
-    @Test func fixesAsYouTypeOnlyWhenNoWordStartsThatWay() {
+    @Test func fixesAsYouTypeOnlyWhenNoWordStartsThatWay() async throws {
+        try await waitForRussianDictionary()
         let detector = Detector()
         let early = detector.decidePrefix(
             keys("ghbd"), typedIn: us, candidates: [us, russian], memory: Memory(), lexicon: lexicon)
