@@ -17,7 +17,7 @@ struct CommonTool: Identifiable {
             id: "keys", name: "Common Keys", summary: "Fixes words typed on the wrong keyboard",
             bundleIdentifier: "com.oddurs.langsmart"),
         CommonTool(
-            id: "bar", name: "Common Bar", summary: "Hides menu bar icons behind one line",
+            id: "bar", name: "Common Bar", summary: "Hides the menu bar icons you rarely use",
             bundleIdentifier: "com.oddurs.reasonal"),
     ]
 
