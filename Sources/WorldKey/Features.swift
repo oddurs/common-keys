@@ -53,12 +53,15 @@ public struct FeatureVector: Equatable, Sendable {
     }
 }
 
-/// How much each piece of evidence counts.
+/// How much each piece of evidence counts, and how much evidence it takes to act unasked.
 public struct Weights: Codable, Equatable, Sendable {
     public var values: [Feature: Double]
+    /// The score evidence must reach before a word is fixed without being asked.
+    public var threshold: Double
 
-    public init(_ values: [Feature: Double]) {
+    public init(_ values: [Feature: Double], threshold: Double) {
         self.values = values
+        self.threshold = threshold
     }
 
     public func score(_ features: FeatureVector) -> Double {
@@ -67,20 +70,21 @@ public struct Weights: Codable, Equatable, Sendable {
 
     /// The weights the engine was tuned with by hand: a symbol inside a word costs more than a
     /// misspelling, a dictionary word is worth the most.
-    public static let hand = Weights([
-        .trailingPunctuation: -0.5,
-        .orthography: -1,
-        .symbols: -2,
-        .foreignLetters: -0.5,
-        .clean: 1,
-        .knownWord: 3,
-        .unknownWord: -1,
-        .noDictionary: -0.5,
-        .readingAccepted: 2,
-        .readingLength: 1,
-        .readingRejected: -2,
-        .unmodeledMethod: -1,
-        .taught: 1,
-        .recognized: 1,
-    ])
+    public static let hand = Weights(
+        [
+            .trailingPunctuation: -0.5,
+            .orthography: -1,
+            .symbols: -2,
+            .foreignLetters: -0.5,
+            .clean: 1,
+            .knownWord: 3,
+            .unknownWord: -1,
+            .noDictionary: -0.5,
+            .readingAccepted: 2,
+            .readingLength: 1,
+            .readingRejected: -2,
+            .unmodeledMethod: -1,
+            .taught: 1,
+            .recognized: 1,
+        ], threshold: 2)
 }

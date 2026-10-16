@@ -19,8 +19,9 @@ public struct Detector {
     public var minLength: Int
     public var weights: Weights
 
-    public init(threshold: Double = 2, minLength: Int = 2, weights: Weights = .hand) {
-        self.threshold = threshold
+    /// Weights default to the fitted ones; `.hand` is the rule-tuned baseline they are gated against.
+    public init(threshold: Double? = nil, minLength: Int = 2, weights: Weights = .trained) {
+        self.threshold = threshold ?? weights.threshold
         self.minLength = minLength
         self.weights = weights
     }
