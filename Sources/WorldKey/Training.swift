@@ -4,12 +4,19 @@ import Foundation
 /// no word the weights were fitted on is ever used to judge them.
 public enum Split: String, Sendable, CaseIterable {
     case all, train, heldOut
+    /// The part of `train` character models learn from.
+    case models
+    /// The part of `train` the combiner is fitted on, unseen by the character models, so their
+    /// evidence looks to it as it will on words a user types that no list has.
+    case combiner
 
     public func contains(_ word: String) -> Bool {
         switch self {
         case .all: true
         case .heldOut: Self.bucket(word) == 0
         case .train: Self.bucket(word) != 0
+        case .models: [1, 2].contains(Self.bucket(word))
+        case .combiner: [3, 4].contains(Self.bucket(word))
         }
     }
 
@@ -47,8 +54,10 @@ public enum Training {
     ) -> [Example] {
         let detector = Detector()
         var examples: [Example] = []
+        lexicon.modelSplit = .models
+        defer { lexicon.modelSplit = .all }
         for keyboards in sets {
-            for meant in keyboards where meant.kind != .converting && lexicon.hasDictionary(meant.baseLanguage) {
+            for meant in keyboards where meant.kind != .converting && lexicon.wordList(for: meant) != nil {
                 for (word, strokes) in Evaluation.sample(meant, count, lexicon, split: split) {
                     for other in keyboards where other.id != meant.id && other.kind != .converting {
                         guard other.text(for: strokes) != word else { continue }

@@ -12,11 +12,19 @@ public protocol Lexicon {
     /// How likely each reading is in its own language, among `languages`, for readings that share
     /// a script. Empty when there is no opinion.
     func languageLikelihood(_ text: String, among languages: [String]) -> [String: Double]
+    /// How typical `text` is of the keyboard's language's words, comparable across languages, or nil
+    /// when there is no model for it.
+    func typicality(_ text: String, on keyboard: any Keyboard) -> Double?
+    /// Whether `word` is in the word list shipped for a language macOS has no dictionary for.
+    /// A list is far from every word, so only being on it says anything.
+    func isListed(_ word: String, language: String) -> Bool
 }
 
 extension Lexicon {
     public func startsWord(_ prefix: String, language: String) -> Bool? { nil }
     public func languageLikelihood(_ text: String, among languages: [String]) -> [String: Double] { [:] }
+    public func typicality(_ text: String, on keyboard: any Keyboard) -> Double? { nil }
+    public func isListed(_ word: String, language: String) -> Bool { false }
 }
 
 /// The system spell checker, CLDR alphabets and the Natural Language recognizer.
@@ -26,8 +34,94 @@ public final class SystemLexicon: Lexicon {
     private var alphabets: [String: CharacterSet?] = [:]
     private var verdicts: [String: Bool] = [:]
     private let recognizer = NLLanguageRecognizer()
+    private var models: [String: CharacterModel] = [:]
+    private var lists: [String: Set<String>] = [:]
+    private var modelless: Set<String> = []
+
+    /// Which words character models learn from. Evaluation keeps the words it judges out of them.
+    public var modelSplit: Split = .all {
+        didSet {
+            models = [:]
+            modelless = []
+        }
+    }
+    /// Whether a model is built the first time a language is asked about. Building one lists the
+    /// spell checker's words, which takes seconds, so the app turns this off and prepares models
+    /// ahead with `prepareModel(for:cache:)`.
+    public var buildsModelsOnDemand = true
 
     public init() {}
+
+    public func isListed(_ word: String, language: String) -> Bool {
+        if let list = lists[language] { return list.contains(word.lowercased()) }
+        guard let shipped = WordLists.shipped(language) else { return false }
+        let list = Set(shipped)
+        lists[language] = list
+        return list.contains(word.lowercased())
+    }
+
+    public func typicality(_ text: String, on keyboard: any Keyboard) -> Double? {
+        guard keyboard.kind != .converting else { return nil }
+        let language = keyboard.baseLanguage
+        if let model = models[language] { return model.typicality(text) }
+        guard buildsModelsOnDemand, !modelless.contains(language) else { return nil }
+        guard let words = wordList(for: keyboard) else {
+            modelless.insert(language)
+            return nil
+        }
+        let model = CharacterModel(words: words.filter(modelSplit.contains))
+        models[language] = model
+        return model.typicality(text)
+    }
+
+    /// The words a language's model learns from: a shipped list where macOS has no dictionary,
+    /// else the spell checker's own words, so the model matches this Mac.
+    public func wordList(for keyboard: any Keyboard) -> [String]? {
+        if let shipped = WordLists.shipped(keyboard.baseLanguage) { return shipped }
+        guard hasDictionary(keyboard.baseLanguage) else { return nil }
+        var words: Set<String> = []
+        for start in keyboard.twoKeyStarts {
+            for word in self.words(startingWith: start, language: keyboard.baseLanguage) {
+                words.insert(word.lowercased())
+            }
+        }
+        return words.isEmpty ? nil : words.sorted()
+    }
+
+    /// Builds a keyboard's model without holding up typing: the word list comes from the cache when
+    /// it was made on this version of macOS, else from the spell checker a few starts at a time.
+    /// Throws only when the cache cannot be written; the model is in use by then regardless.
+    public func prepareModel(for keyboard: any Keyboard, cache folder: URL) async throws {
+        let language = keyboard.baseLanguage
+        guard keyboard.kind != .converting, models[language] == nil, !modelless.contains(language) else { return }
+        let file = folder.appending(path: "\(language).txt")
+        let system = ProcessInfo.processInfo.operatingSystemVersionString
+        if let cached = try? String(contentsOf: file, encoding: .utf8) {
+            var lines = cached.split(separator: "\n").map(String.init)
+            if lines.first == system {
+                lines.removeFirst()
+                models[language] = CharacterModel(words: lines)
+                return
+            }
+        }
+        var words: Set<String> = []
+        if let shipped = WordLists.shipped(language) {
+            words = Set(shipped)
+        } else if hasDictionary(language) {
+            for (index, start) in keyboard.twoKeyStarts.enumerated() {
+                for word in self.words(startingWith: start, language: language) { words.insert(word.lowercased()) }
+                if index % 20 == 19 { await Task.yield() }
+            }
+        }
+        guard !words.isEmpty else {
+            modelless.insert(language)
+            return
+        }
+        models[language] = CharacterModel(words: Array(words))
+        guard WordLists.shipped(language) == nil else { return }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try ([system] + words.sorted()).joined(separator: "\n").write(to: file, atomically: true, encoding: .utf8)
+    }
 
     public var languagesWithDictionaries: [String] { NSSpellChecker.shared.availableLanguages }
 

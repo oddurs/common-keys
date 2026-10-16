@@ -72,3 +72,6 @@ struct FakeLexicon: Lexicon {
         }
     }
 }
+
+/// One lexicon for every test that asks the system: its character models take seconds to build.
+@MainActor let sharedLexicon = SystemLexicon()

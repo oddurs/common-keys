@@ -47,8 +47,12 @@ func keyboard(_ name: String) throws -> any Keyboard {
     return match
 }
 
-/// The pairs the combiner is fitted on: the README's accuracy table.
-let trainingPairs = ["Icelandic", "Russian", "2SetKorean", "Greek", "Hebrew", "Arabic", "French", "German"].map {
+/// The pairs the combiner is fitted on and gated against.
+let trainingPairs = [
+    "Icelandic", "Russian", "2SetKorean", "Greek", "Hebrew", "Arabic", "French", "German",
+    // Languages macOS has no dictionary for, with shipped word lists.
+    "Thai", "Georgian-QWERTY", "Armenian-HMQWERTY",
+].map {
     ["US", $0]
 }
 

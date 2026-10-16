@@ -82,6 +82,12 @@ The engine is a library, `WorldKey`, in layers. Each layer knows nothing of the 
    - `Orthography`: rules no word breaks, such as a Hebrew final letter mid-word, a word starting
      with a combining mark, or two scripts in one word;
    - the language recognizer, between readings in the same script only;
+   - a character model per language (`CharacterModel`): 4-grams of how its words are spelled, scored as
+     how typical a reading is of the language. It grades what a dictionary can only accept or reject,
+     and it covers names, slang and languages with no dictionary. Models are built on your Mac from
+     the spell checker's own words, a few at a time after launch, and cached;
+   - for languages macOS has no dictionary for, a shipped word list (`WordLists`): Thai, Georgian
+     and Armenian, from the Leipzig Corpora Collection;
    - what the user taught (`Memory`).
 4. **Weights.** Each reading becomes a `FeatureVector`, and `Weights` turn the difference between two
    readings into a score. The weights are fitted, not chosen: `worldkey train` types dictionary words
@@ -113,28 +119,28 @@ for Swift code.
 
 ### How well it works
 
-`worldkey eval` takes dictionary words, types each on its own keyboard and on the wrong one, and
-counts the results. On macOS 26 with 150 words per language:
+`worldkey eval --split heldOut` takes dictionary words the weights and character models never saw,
+types each on its own keyboard and on the wrong one, and counts the results. Words whose wrong-keyboard
+reading is itself a real word there, like `an` typed on Greek as `αν`, count neither way: leaving
+them alone is right. On macOS 26 with 150 held-out words per language, hand-tuned rules against the
+fitted model:
 
-| Keyboards | Correct words changed | Fixed: English typed on the other / the other typed on U.S. |
+| Keyboards | Correct words changed, rules → model | Wrong-keyboard words fixed, rules → model |
 |---|---|---|
-| U.S. + Icelandic | 0 / 300 | Icelandic on U.S. 97% (others read the same) |
-| U.S. + Russian | 0 / 300 | 98% / 100% |
-| U.S. + Korean 2-Set | 0 / 300 | 100% / 100% |
-| U.S. + Greek | 0 / 300 | 99% / 97% |
-| U.S. + Hebrew | 0 / 300 | 93% / 97% |
-| U.S. + Arabic | 0 / 300 | 88% / 98% |
-| U.S. + French | 0 / 300 | 100% / 92% |
-| U.S. + German | 0 / 300 | 97% / 82% |
-| U.S. + Russian + Ukrainian | 0 / 450 | 81–100% |
+| U.S. + Icelandic, Russian, Korean 2-Set, Greek, Hebrew, Arabic, French or German | 0 → 0 | 100% → 100% |
+| U.S. + Thai | 0 → 0 | Thai on U.S. 58% → 100% |
+| U.S. + Georgian QWERTY | 2 → 0 | Georgian on U.S. 0% → 100% |
+| U.S. + Armenian HM QWERTY | 4 → 0 | Armenian on U.S. 51% → 100% |
 
-The misses are mostly short words that are real in both languages, such as `an` and `αν`, or `do`
-and `גם`, where leaving them alone is right. Judging a word takes about 0.13 ms.
+Georgian and Armenian QWERTY layouts follow Latin sounds, so Georgian typed on U.S. reads as
+plausible Latin (`iyo` for `იყო`). Rules alone could not tell, and changed `ორ` to `or`. Judging a
+word takes about 0.05–0.3 ms.
 
 ### Limits
 
-- Languages without a system dictionary, like Thai, Khmer or Georgian, rely on spelling rules and
-  what you teach. Auto-fixing is cautious there, and the convert shortcut and learning carry it.
+- Languages with neither a system dictionary nor a shipped word list, like Khmer or Lao, rely on
+  spelling rules and what you teach. Auto-fixing is cautious there, and the convert shortcut and
+  learning carry it.
 - Thai and other scripts written without spaces end a "word" only at a space.
 - Text typed in a converting input method is never fixed: it is the user's pick.
 - Korean 3-Set, romaja and shape-based Chinese methods are destinations for the convert shortcut
@@ -189,3 +195,7 @@ Layout:
 ## Licence
 
 MIT. See [LICENSE](LICENSE).
+
+The word lists in `Sources/WorldKey/WordLists` are derived from the [Leipzig Corpora
+Collection](https://wortschatz.uni-leipzig.de) (CC BY 4.0), whose corpora are built from Wikipedia
+text (CC BY-SA 4.0). `scripts/wordlists` regenerates them.
