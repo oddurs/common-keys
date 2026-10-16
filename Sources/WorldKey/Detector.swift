@@ -111,10 +111,19 @@ public struct Detector {
         _ strokes: [KeyStroke], original: String, base: FeatureVector, typedIn current: any Keyboard,
         readAs text: String, on candidate: any Keyboard, memory: Memory, lexicon: some Lexicon
     ) -> FeatureVector {
-        var evidence = Scorer.features(text, on: candidate, lexicon: lexicon) - base
+        let meant = Scorer.features(text, on: candidate, lexicon: lexicon)
+        var evidence = meant - base
+        evidence[.bothKnown] = base[.knownWord] * meant[.knownWord]
         evidence[.taught] = memory.boost(strokes, from: current.id, to: candidate.id)
         evidence[.recognized] = Scorer.recognition(
             original, on: current, against: text, on: candidate, lexicon: lexicon)
+        if let shown = lexicon.typicality(Scorer.core(original), on: current),
+            let meant = lexicon.typicality(Scorer.core(text), on: candidate)
+        {
+            // Clamped: a reading full of characters a language never uses is noise either way.
+            evidence[.shownTypicality] = max(-5, shown)
+            evidence[.meantTypicality] = max(-5, meant)
+        }
         return evidence
     }
 
@@ -259,7 +268,10 @@ enum Scorer {
             switch lexicon.isWord(String(core), language: language) {
             case true?: features[.knownWord] = 1
             case false?: features[.unknownWord] = 1
-            case nil: features[.noDictionary] = 1  // A reading has to earn its place some other way.
+            case nil:
+                // A reading has to earn its place some other way, such as a shipped word list.
+                features[.noDictionary] = 1
+                if lexicon.isListed(String(core), language: language) { features[.listedWord] = 1 }
             }
         }
         return features

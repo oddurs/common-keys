@@ -11,7 +11,7 @@ struct SystemTests {
     let greek = InputSources.keyboard("com.apple.keylayout.Greek")!
     let korean = InputSources.keyboard("com.apple.inputmethod.Korean.2SetKorean")!
     let japanese = InputSources.keyboard("com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese")!
-    let lexicon = SystemLexicon()
+    let lexicon = sharedLexicon
 
     func decide(_ keys: String, on current: any Keyboard, with other: any Keyboard) -> Decision? {
         Detector().decide(
@@ -141,7 +141,7 @@ struct AccuracyTests {
     ])
     func dictionaryWords(ids: [String]) {
         let keyboards = ids.compactMap(InputSources.keyboard)
-        let report = Evaluation.run(keyboards, words: 40, lexicon: SystemLexicon())
+        let report = Evaluation.run(keyboards, words: 40, lexicon: sharedLexicon)
         for source in report.sources {
             #expect(source.falseFixes == 0, "\(source.keyboard): \(source.examples)")
         }

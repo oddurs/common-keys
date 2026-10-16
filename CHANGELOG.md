@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- Thai, Georgian and Armenian words typed on the wrong keyboard are fixed. Typed on U.S., they are now fixed every time in testing, against 58%, 0% and 51% before.
+- Each language's spelling is learned on this Mac from its own dictionary, so names and words no dictionary has can still be told apart from wrong-keyboard noise.
+
+### Fixed
+
+- Correctly typed Georgian and Armenian words that also spell an English word on the U.S. layout, like ორ and ուներ, are no longer changed to English.
+
 ### Changed
 
 - Internal: the weights that decide when to fix a word are fitted on generated examples instead of set by hand, behind a held-out check that they fix no correct word (no change in results on the checked pairs).

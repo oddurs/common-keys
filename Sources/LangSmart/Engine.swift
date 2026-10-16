@@ -476,6 +476,27 @@ final class Engine {
         currentLayoutID = InputSources.currentID()
         tracker.setLayout(currentLayoutID ?? "")
         applyShortcuts()
+        prepareModels()
+    }
+
+    /// Builds each enabled language's character model in the background. Listing a language's
+    /// words takes the spell checker a few seconds, so it happens a few words at a time between
+    /// key presses, and is cached for the next launch. Until a model is ready the engine judges
+    /// without it.
+    private func prepareModels() {
+        lexicon.buildsModelsOnDemand = false
+        let keyboards = layouts
+        let lexicon = lexicon
+        Task {
+            for keyboard in keyboards {
+                do {
+                    try await lexicon.prepareModel(for: keyboard, cache: Self.folder.appending(path: "Words"))
+                } catch {
+                    log.error(
+                        "Could not cache \(keyboard.baseLanguage, privacy: .public) words: \(error, privacy: .public)")
+                }
+            }
+        }
     }
 
     private func layoutDidChange() {

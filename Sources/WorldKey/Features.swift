@@ -18,6 +18,8 @@ public enum Feature: String, CaseIterable, Codable, CodingKeyRepresentable, Send
     case unknownWord
     /// The language has no dictionary to ask.
     case noDictionary
+    /// In the word list shipped for a language without a dictionary.
+    case listedWord
     /// For a converting method: the reading keeps to the language's syllables.
     case readingAccepted
     /// For a converting method: how far an accepted reading runs past four letters, capped.
@@ -31,6 +33,13 @@ public enum Feature: String, CaseIterable, Codable, CodingKeyRepresentable, Send
     case taught
     /// The language recognizer's preference between two readings in one script.
     case recognized
+    /// How typical the reading on screen is of its language's words, by character model. Zero
+    /// unless both languages have a model.
+    case shownTypicality
+    /// How typical the candidate reading is of its language's words. Zero unless both have a model.
+    case meantTypicality
+    /// Both readings are dictionary words, as with `an` and `αν`: the hardest case to call.
+    case bothKnown
 
     fileprivate static let index = Dictionary(uniqueKeysWithValues: allCases.enumerated().map { ($1, $0) })
 }
@@ -80,11 +89,15 @@ public struct Weights: Codable, Equatable, Sendable {
             .knownWord: 3,
             .unknownWord: -1,
             .noDictionary: -0.5,
+            .listedWord: 0,
             .readingAccepted: 2,
             .readingLength: 1,
             .readingRejected: -2,
             .unmodeledMethod: -1,
             .taught: 1,
             .recognized: 1,
+            .shownTypicality: 0,
+            .meantTypicality: 0,
+            .bothKnown: 0,
         ], threshold: 2)
 }

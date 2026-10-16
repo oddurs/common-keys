@@ -9,6 +9,9 @@ public struct Evaluation: Encodable, Sendable {
         public var words: Int
         /// Words that read the same on both keyboards, so nobody could tell.
         public var identical: Int
+        /// Words whose reading on the wrong keyboard is itself a real word there, like `an` typed on
+        /// Greek as `αν`: leaving them alone is right, so they count neither way.
+        public var ambiguous = 0
         /// Words fixed back to the right keyboard.
         public var fixed: Int
         /// Words fixed to a third keyboard instead.
@@ -36,12 +39,15 @@ public struct Evaluation: Encodable, Sendable {
         split: Split = .all
     ) -> Evaluation {
         var report = Evaluation()
+        // Words being judged must be unseen by the character models, as they are by the combiner.
+        if split == .heldOut { lexicon.modelSplit = .models }
+        defer { lexicon.modelSplit = .all }
         let clock = ContinuousClock()
         var elapsed = Duration.zero
         var judged = 0
 
         for meant in keyboards {
-            guard meant.kind != .converting, lexicon.hasDictionary(meant.baseLanguage) else {
+            guard meant.kind != .converting, lexicon.wordList(for: meant) != nil else {
                 report.skipped.append(meant.id)
                 continue
             }
@@ -62,8 +68,15 @@ public struct Evaluation: Encodable, Sendable {
                     meant: meant.id, typedOn: typed.id, words: words.count, identical: 0, fixed: 0,
                     misfixed: 0)
                 for (word, strokes) in words {
-                    if typed.text(for: strokes) == word {
+                    let reading = typed.text(for: strokes)
+                    if reading == word {
                         pair.identical += 1
+                        continue
+                    }
+                    if lexicon.isWord(reading, language: typed.baseLanguage) == true
+                        || lexicon.isListed(reading, language: typed.baseLanguage)
+                    {
+                        pair.ambiguous += 1
                         continue
                     }
                     let start = clock.now
@@ -95,30 +108,30 @@ public struct Evaluation: Encodable, Sendable {
     static func sample(_ keyboard: any Keyboard, _ count: Int, _ lexicon: SystemLexicon, split: Split = .all)
         -> [(String, [KeyStroke])]
     {
-        let keys = (UInt16(0)...50).filter { KeyKind(keyCode: $0) == .character }.map { KeyStroke($0) }
-        // Two-letter starts, so the spell checker's short completion lists still add up to a broad
-        // sample, visited in a fixed scattered order rather than alphabetically.
-        var prefixes: Set<String> = []
-        for first in keys {
-            for second in keys {
-                let text = keyboard.text(for: [first, second])
-                if text.count == 2, text.allSatisfy(\.isLetter) { prefixes.insert(text.lowercased()) }
-            }
-        }
+        // Two-key starts, so the spell checker's short completion lists still add up to a broad sample:
+        // two letters, or one syllable where two keys compose into one, as in Korean.
+        let prefixes = keyboard.twoKeyStarts
         let order = prefixes.sorted { scatter($0) < scatter($1) }
         var seen: Set<String> = []
         var words: [(String, [KeyStroke])] = []
+        func take(_ word: String) -> Bool {
+            guard word.count >= 2, !seen.contains(word), word.allSatisfy(\.isLetter), split.contains(word),
+                let strokes = keyboard.strokes(for: word), keyboard.text(for: strokes) == word
+            else { return false }
+            seen.insert(word)
+            words.append((word, strokes))
+            return true
+        }
+        // Without a dictionary, the shipped list is the only source of words, in frequency order.
+        if let shipped = WordLists.shipped(keyboard.baseLanguage) {
+            for word in shipped where words.count < count { _ = take(word) }
+            return words
+        }
         for prefix in order where words.count < count {
             // A couple of words per start: enough spread that no one prefix dominates.
             var taken = 0
-            for word in lexicon.words(startingWith: prefix, language: keyboard.baseLanguage) {
-                guard taken < 2, word.count >= 2, !seen.contains(word), word.allSatisfy(\.isLetter),
-                    split.contains(word), let strokes = keyboard.strokes(for: word),
-                    keyboard.text(for: strokes) == word
-                else { continue }
-                seen.insert(word)
-                words.append((word, strokes))
-                taken += 1
+            for word in lexicon.words(startingWith: prefix, language: keyboard.baseLanguage) where taken < 2 {
+                if take(word) { taken += 1 }
             }
         }
         return Array(words.prefix(count))
@@ -141,13 +154,14 @@ public struct Evaluation: Encodable, Sendable {
         lines.append(
             "Typed on the wrong keyboard (fixed back is the goal; identical readings cannot be told apart):")
         for pair in pairs {
-            let telling = pair.words - pair.identical
+            let telling = pair.words - pair.identical - pair.ambiguous
             let rate = telling == 0 ? 0 : 100 * Double(pair.fixed) / Double(telling)
             lines.append(
                 String(
                     format:
                         "  meant %@, typed on %@: %d/%d fixed (%.1f%%), %d to a third keyboard, %d identical",
                     pair.meant, pair.typedOn, pair.fixed, telling, rate, pair.misfixed, pair.identical)
+                    + (pair.ambiguous > 0 ? ", \(pair.ambiguous) real words either way" : "")
                     + (pair.missed.isEmpty ? "" : "  missed " + pair.missed.joined(separator: ", ")))
         }
         if !skipped.isEmpty {
