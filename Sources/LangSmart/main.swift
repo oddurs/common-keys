@@ -17,9 +17,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         engine.flush()
     }
 
-    /// Never shown, since this is a menu bar app, but it gives the settings window ⌘W and ⌘Q.
+    /// Opening the app again while it runs, from Finder or Spotlight, shows Settings: a menu bar app
+    /// has no other window to bring forward.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        settings.show()
+        return false
+    }
+
+    @objc func showSettings(_ sender: Any?) {
+        settings.show()
+    }
+
+    /// Never shown, since this is a menu bar app, but it gives the settings window ⌘, ⌘W and ⌘Q.
     private static func mainMenu() -> NSMenu {
         let app = NSMenu()
+        app.addItem(
+            withTitle: "Settings…", action: #selector(AppDelegate.showSettings(_:)), keyEquivalent: ",")
         app.addItem(
             withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         app.addItem(

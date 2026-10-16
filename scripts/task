@@ -77,6 +77,7 @@ build)
     lipo -create $apps -output "$app/Contents/MacOS/LangSmart"
     cp Resources/Info.plist "$app/Contents/"
     cp Resources/AppIcon.icns "$app/Contents/Resources/"
+    cp -R Resources/CommonTools "$app/Contents/Resources/"
     sign "$app" com.oddurs.langsmart
     echo "==> built $app"
     # shellcheck disable=SC2086
