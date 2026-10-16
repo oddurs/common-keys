@@ -11,7 +11,7 @@ let usage = """
       convert <text> --from <kb> [--to <kb>]  what text typed on <kb> was meant to say on another keyboard
       detect <text> --from <kb>               whether text was typed on the wrong keyboard, among enabled ones
       eval [--keyboards a,b,…] [--words N]    accuracy on dictionary words typed on the right and wrong keyboard
-           [--engine rules|model] [--split all|train|heldOut]
+           [--engine rules|model] [--split all|train|heldOut] [--prefixes]
       train [--words N] [--write path]        fit the combiner's weights on synthetic examples
 
     Keyboards are named by id (com.apple.keylayout.US) or its last part (US, Icelandic, 2SetKorean).
@@ -59,8 +59,8 @@ let trainingPairs = [
 @MainActor
 func detector(_ engine: String?) throws -> Detector {
     switch engine {
-    case nil, "model": Detector(weights: .trained)
-    case "rules": Detector(weights: .hand)
+    case nil, "model": Detector()
+    case "rules": Detector(weights: .hand, prefixWeights: nil)
     case let other?: throw Failure(description: "unknown engine \(other); use rules or model")
     }
 }
@@ -144,26 +144,44 @@ func run() throws {
                 guard let split = Split(rawValue: name) else { throw Failure(description: "unknown split \(name)") }
                 return split
             } ?? .all
-        let report = Evaluation.run(
-            keyboards, words: count, lexicon: lexicon, detector: try detector(option("--engine")), split: split)
-        try emit(report) { report.table }
+        let detector = try detector(option("--engine"))
+        if arguments.contains("--prefixes") {
+            let report = Evaluation.prefixes(
+                keyboards, words: count, lexicon: lexicon, detector: detector, split: split)
+            try emit(report) { report.table }
+        } else {
+            let report = Evaluation.run(keyboards, words: count, lexicon: lexicon, detector: detector, split: split)
+            try emit(report) { report.table }
+        }
 
     case "train":
         let count = Int(option("--words") ?? "") ?? 400
         let sets = try trainingPairs.map { pair in try pair.map(keyboard) }
-        let examples = Training.examples(sets, words: count, split: .train, lexicon: lexicon)
-        let weights = Training.fit(examples)
-        let positives = examples.filter(\.meant).count
-        let note =
-            "Fitted on \(examples.count) examples (\(positives) to fix, \(examples.count - positives) to leave), "
-            + "\(count) training words per language, U.S. paired with \(trainingPairs.map { $0[1] }.joined(separator: ", "))."
-        if let path = option("--write") {
-            try Training.source(weights, note: note).write(toFile: path, atomically: true, encoding: .utf8)
+        let pairs = trainingPairs.map { $0[1] }.joined(separator: ", ")
+        var fitted: [(name: String, weights: Weights, note: String)] = []
+        for (name, examples) in [
+            ("trained", Training.examples(sets, words: count, split: .combiner, lexicon: lexicon)),
+            ("trainedPrefix", Training.prefixExamples(sets, words: count, split: .combiner, lexicon: lexicon)),
+        ] {
+            let positives = examples.filter(\.meant).count
+            let what = name == "trained" ? "whole words" : "starts of words, three to six keys"
+            fitted.append(
+                (
+                    name, Training.fit(examples),
+                    "Fitted on \(examples.count) examples of \(what) (\(positives) to fix, "
+                        + "\(examples.count - positives) to leave), from \(count) words per language, U.S. paired with "
+                        + "\(pairs)."
+                ))
         }
-        try emit(weights) {
-            ([note, String(format: "threshold %.4f", weights.threshold)]
-                + Feature.allCases.map { String(format: "  %-20@ %+.4f", $0.rawValue, weights.values[$0] ?? 0) })
-                .joined(separator: "\n")
+        if let path = option("--write") {
+            try Training.source(fitted).write(toFile: path, atomically: true, encoding: .utf8)
+        }
+        try emit(fitted.map(\.weights)) {
+            fitted.map { name, weights, note in
+                ([name, note, String(format: "threshold %.4f", weights.threshold)]
+                    + Feature.allCases.map { String(format: "  %-20@ %+.4f", $0.rawValue, weights.values[$0] ?? 0) })
+                    .joined(separator: "\n")
+            }.joined(separator: "\n\n")
         }
 
     default:

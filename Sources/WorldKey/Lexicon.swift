@@ -13,18 +13,21 @@ public protocol Lexicon {
     /// a script. Empty when there is no opinion.
     func languageLikelihood(_ text: String, among languages: [String]) -> [String: Double]
     /// How typical `text` is of the keyboard's language's words, comparable across languages, or nil
-    /// when there is no model for it.
-    func typicality(_ text: String, on keyboard: any Keyboard) -> Double?
+    /// when there is no model for it. `complete` is false for the start of a word still being typed.
+    func typicality(_ text: String, on keyboard: any Keyboard, complete: Bool) -> Double?
     /// Whether `word` is in the word list shipped for a language macOS has no dictionary for.
     /// A list is far from every word, so only being on it says anything.
     func isListed(_ word: String, language: String) -> Bool
+    /// Whether some word in the shipped list starts with `prefix`.
+    func startsListed(_ prefix: String, language: String) -> Bool
 }
 
 extension Lexicon {
     public func startsWord(_ prefix: String, language: String) -> Bool? { nil }
     public func languageLikelihood(_ text: String, among languages: [String]) -> [String: Double] { [:] }
-    public func typicality(_ text: String, on keyboard: any Keyboard) -> Double? { nil }
+    public func typicality(_ text: String, on keyboard: any Keyboard, complete: Bool) -> Double? { nil }
     public func isListed(_ word: String, language: String) -> Bool { false }
+    public func startsListed(_ prefix: String, language: String) -> Bool { false }
 }
 
 /// The system spell checker, CLDR alphabets and the Natural Language recognizer.
@@ -36,6 +39,7 @@ public final class SystemLexicon: Lexicon {
     private let recognizer = NLLanguageRecognizer()
     private var models: [String: CharacterModel] = [:]
     private var lists: [String: Set<String>] = [:]
+    private var listStarts: [String: Set<String>] = [:]
     private var modelless: Set<String> = []
 
     /// Which words character models learn from. Evaluation keeps the words it judges out of them.
@@ -60,10 +64,26 @@ public final class SystemLexicon: Lexicon {
         return list.contains(word.lowercased())
     }
 
-    public func typicality(_ text: String, on keyboard: any Keyboard) -> Double? {
+    public func startsListed(_ prefix: String, language: String) -> Bool {
+        if let starts = listStarts[language] { return starts.contains(prefix.lowercased()) }
+        guard let shipped = WordLists.shipped(language) else { return false }
+        // Every start of every listed word up to eight letters: longer starts are rarely typed alone.
+        var starts: Set<String> = []
+        for word in shipped {
+            var start = ""
+            for character in word.prefix(8) {
+                start.append(character)
+                starts.insert(start)
+            }
+        }
+        listStarts[language] = starts
+        return starts.contains(prefix.lowercased())
+    }
+
+    public func typicality(_ text: String, on keyboard: any Keyboard, complete: Bool) -> Double? {
         guard keyboard.kind != .converting else { return nil }
         let language = keyboard.baseLanguage
-        if let model = models[language] { return model.typicality(text) }
+        if let model = models[language] { return model.typicality(text, complete: complete) }
         guard buildsModelsOnDemand, !modelless.contains(language) else { return nil }
         guard let words = wordList(for: keyboard) else {
             modelless.insert(language)
@@ -71,7 +91,7 @@ public final class SystemLexicon: Lexicon {
         }
         let model = CharacterModel(words: words.filter(modelSplit.contains))
         models[language] = model
-        return model.typicality(text)
+        return model.typicality(text, complete: complete)
     }
 
     /// The words a language's model learns from: a shipped list where macOS has no dictionary,

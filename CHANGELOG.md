@@ -16,6 +16,7 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Changed
 
 - Internal: the weights that decide when to fix a word are fitted on generated examples instead of set by hand, behind a held-out check that they fix no correct word (no change in results on the checked pairs).
+- Internal: the engine's mid-word check is fitted and gated like the end-of-word one, so no start of a correctly typed word is changed (no change in the app, which fixes words as they end).
 
 ## [0.2.0] - 2026-10-16
 

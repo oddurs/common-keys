@@ -49,7 +49,7 @@ struct TrainingTests {
     }
 
     @Test func writesSourceThatNamesEveryFeature() {
-        let source = Training.source(.hand, note: "Test.")
+        let source = Training.source([(name: "hand", weights: .hand, note: "Test.")])
         for feature in Feature.allCases { #expect(source.contains(".\(feature.rawValue):")) }
         #expect(source.contains("threshold: 2.0000"))
     }
