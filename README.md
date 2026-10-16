@@ -50,6 +50,9 @@ Common Keys lives in the menu bar as the flag of the current layout. The menu sh
 - **Next layout**: ⌥⇧Space by default, changeable in Settings.
 - **Per-app layouts**: from the menu or Settings, pin the front app to one layout, or pause Common Keys in it. Terminals and code editors start paused.
 - **Forget Everything…** in Settings clears what it has learned.
+- **Settings** opens from the menu with ⌘, or by opening the app again while it runs. It has
+  Shortcuts, Exceptions (per-app layouts), Learning, and General (**Open at login**), and ends with
+  the Common Tools family and the app's version.
 
 Learned data lives in `~/Library/Application Support/LangSmart/` (the folder keeps the app's former name):
 `memory.json` holds learned words, mixed-up keys and each app's usual layout, and `stats.json` holds the

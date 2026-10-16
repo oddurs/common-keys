@@ -4,13 +4,22 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
-### Fixed
+## [0.2.0] - 2026-10-16
 
-- Settings › Exceptions lists only apps installed on this Mac, instead of showing bare bundle identifiers for editors and terminals that are paused by default but not present.
+### Added
+
+- A Common Tools section at the end of Settings: Common Stats, Common Keys, and Common Bar, each opened if installed or linked if not, and the app's version.
 
 ### Changed
 
+- Settings follows the layout shared by the Common Tools apps: Shortcuts, Exceptions, Learning, General, then Common Tools.
+- "Launch at login" is now "Open at login", under General.
+- Settings also opens with ⌘, while its window is open, and when Common Keys is opened again while it runs.
 - Internal: the scorer weighs named features instead of inline constants, so the weights can be fitted (no change in results).
+
+### Fixed
+
+- Settings › Exceptions lists only apps installed on this Mac, instead of showing bare bundle identifiers for editors and terminals that are paused by default but not present.
 
 ## [0.1.1] - 2026-10-16
 
@@ -37,6 +46,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - The `WorldKey` library and the `worldkey` command: list input sources, convert text between layouts, detect the intended layout, and evaluate accuracy, with `--json` output.
 - Universal (Apple silicon and Intel) release builds of the app and the `worldkey` command.
 
-[Unreleased]: https://github.com/oddurs/common-keys/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/oddurs/common-keys/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/oddurs/common-keys/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/oddurs/common-keys/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/oddurs/common-keys/releases/tag/v0.1.0
