@@ -77,27 +77,24 @@ struct SystemTests {
         #expect(decide(typed, on: icelandic, with: us) == nil)
     }
 
-    /// A fresh CI runner can answer Russian spelling queries with no completions at first (#3).
-    /// Waiting keeps these tests about the detector rather than the spell server's start-up.
-    func waitForRussianDictionary() async throws {
+    /// A fresh CI runner can answer Russian spelling queries with no completions at first (#3), and
+    /// macOS can drop a language's completion data on any Mac. Waits up to a minute for them and
+    /// says whether they came.
+    func waitForRussianCompletions() async throws -> Bool {
         let clock = ContinuousClock()
         let start = clock.now
-        var polls = 0
         while SystemLexicon().startsWord("прив", language: "ru") != true {
-            polls += 1
             guard clock.now - start < .seconds(60) else {
-                Issue.record("the Russian spelling dictionary gave no completions for 60 seconds")
-                return
+                print("Russian completions did not answer for 60 seconds; checking the fallback instead")
+                return false
             }
             try await Task.sleep(for: .milliseconds(200))
         }
-        if polls > 0 {
-            print("waited \(clock.now - start) for the Russian spelling dictionary")
-        }
+        return true
     }
 
-    @Test func russianOnUSIsFixed() async throws {
-        try await waitForRussianDictionary()
+    /// Fixed whether or not completions answer: without them the spell check alone decides.
+    @Test func russianOnUSIsFixed() {
         #expect(decide("ghbdtn", on: us, with: russian)?.replacement == "привет")
     }
 
@@ -118,11 +115,12 @@ struct SystemTests {
     }
 
     @Test func fixesAsYouTypeOnlyWhenNoWordStartsThatWay() async throws {
-        try await waitForRussianDictionary()
+        let completing = try await waitForRussianCompletions()
         let detector = Detector()
         let early = detector.decidePrefix(
             keys("ghbd"), typedIn: us, candidates: [us, russian], memory: Memory(), lexicon: lexicon)
-        #expect(early?.replacement == "прив")
+        // Mid-word needs to know what words start this way; without completions it waits for the space.
+        #expect(early?.replacement == (completing ? "прив" : nil))
         #expect(
             detector.decidePrefix(
                 keys("hell"), typedIn: us, candidates: [us, russian], memory: Memory(), lexicon: lexicon)

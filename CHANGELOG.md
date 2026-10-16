@@ -11,12 +11,14 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- Words in a language whose spelling completions macOS has dropped, as it sometimes does for Russian, French or German, are fixed again: the plain spell check decides instead of reading every word as misspelled.
 - Correctly typed Georgian and Armenian words that also spell an English word on the U.S. layout, like ორ and ուներ, are no longer changed to English.
 
 ### Changed
 
 - Internal: the weights that decide when to fix a word are fitted on generated examples instead of set by hand, behind a held-out check that they fix no correct word (no change in results on the checked pairs).
 - Internal: the engine's mid-word check is fitted and gated like the end-of-word one, so no start of a correctly typed word is changed (no change in the app, which fixes words as they end).
+
 
 ## [0.2.0] - 2026-10-16
 
