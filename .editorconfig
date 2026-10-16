@@ -9,7 +9,7 @@ indent_style = space
 indent_size = 4
 
 [*.swift]
-max_line_length = 110
+max_line_length = 120
 
 [*.{yml,yaml,json,html,css}]
 indent_size = 2

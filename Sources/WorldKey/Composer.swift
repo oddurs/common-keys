@@ -240,8 +240,7 @@ public struct VietnameseComposer: Composer {
             replace(index, with: targets[lower[index]]!)
             return true
         case (.telex, "w"), (.vni, "7"), (.vni, "8"):
-            if let o = lower.lastIndex(of: "o"), o > 0, lower[o - 1] == "u" || lower[o - 1] == "ư", key != "8"
-            {
+            if let o = lower.lastIndex(of: "o"), o > 0, lower[o - 1] == "u" || lower[o - 1] == "ư", key != "8" {
                 replace(o - 1, with: "ư")
                 replace(o, with: "ơ")
                 return true
