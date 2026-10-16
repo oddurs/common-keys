@@ -31,11 +31,11 @@ public struct Evaluation: Encodable, Sendable {
     public var skipped: [String] = []
 
     @MainActor
-    public static func run(_ keyboards: [any Keyboard], words count: Int, lexicon: SystemLexicon)
-        -> Evaluation
-    {
+    public static func run(
+        _ keyboards: [any Keyboard], words count: Int, lexicon: SystemLexicon, detector: Detector = Detector(),
+        split: Split = .all
+    ) -> Evaluation {
         var report = Evaluation()
-        let detector = Detector()
         let clock = ContinuousClock()
         var elapsed = Duration.zero
         var judged = 0
@@ -45,7 +45,7 @@ public struct Evaluation: Encodable, Sendable {
                 report.skipped.append(meant.id)
                 continue
             }
-            let words = sample(meant, count, lexicon)
+            let words = sample(meant, count, lexicon, split: split)
             var source = Source(keyboard: meant.id, words: words.count, falseFixes: 0, examples: [])
             for (word, strokes) in words {
                 if let fix = detector.decide(
@@ -92,35 +92,40 @@ public struct Evaluation: Encodable, Sendable {
     /// Dictionary words the keyboard can type, gathered from the spell checker's completions for
     /// the syllables or letters its keys produce.
     @MainActor
-    static func sample(_ keyboard: any Keyboard, _ count: Int, _ lexicon: SystemLexicon) -> [(
-        String, [KeyStroke]
-    )] {
+    static func sample(_ keyboard: any Keyboard, _ count: Int, _ lexicon: SystemLexicon, split: Split = .all)
+        -> [(String, [KeyStroke])]
+    {
         let keys = (UInt16(0)...50).filter { KeyKind(keyCode: $0) == .character }.map { KeyStroke($0) }
-        var prefixes: [String] = []
+        // Two-letter starts, so the spell checker's short completion lists still add up to a broad
+        // sample, visited in a fixed scattered order rather than alphabetically.
+        var prefixes: Set<String> = []
         for first in keys {
             for second in keys {
-                guard let character = keyboard.text(for: [first, second]).first, character.isLetter,
-                    !prefixes.contains(String(character))
-                else { continue }
-                prefixes.append(String(character))
+                let text = keyboard.text(for: [first, second])
+                if text.count == 2, text.allSatisfy(\.isLetter) { prefixes.insert(text.lowercased()) }
             }
         }
+        let order = prefixes.sorted { scatter($0) < scatter($1) }
         var seen: Set<String> = []
         var words: [(String, [KeyStroke])] = []
-        let perPrefix = max(2, count / max(prefixes.count, 1) + 1)
-        for prefix in prefixes {
-            for word in lexicon.words(startingWith: prefix, language: keyboard.baseLanguage).prefix(
-                perPrefix * 3)
-            {
-                guard words.count < count, word.count >= 2, !seen.contains(word), word.allSatisfy(\.isLetter),
-                    let strokes = keyboard.strokes(for: word), keyboard.text(for: strokes) == word
+        for prefix in order where words.count < count {
+            // A couple of words per start: enough spread that no one prefix dominates.
+            var taken = 0
+            for word in lexicon.words(startingWith: prefix, language: keyboard.baseLanguage) {
+                guard taken < 2, word.count >= 2, !seen.contains(word), word.allSatisfy(\.isLetter),
+                    split.contains(word), let strokes = keyboard.strokes(for: word),
+                    keyboard.text(for: strokes) == word
                 else { continue }
                 seen.insert(word)
                 words.append((word, strokes))
-                if words.filter({ $0.0.hasPrefix(prefix) }).count >= perPrefix { break }
+                taken += 1
             }
         }
-        return words
+        return Array(words.prefix(count))
+    }
+
+    private static func scatter(_ text: String) -> UInt64 {
+        text.utf8.reduce(UInt64(0xcbf2_9ce4_8422_2325)) { ($0 ^ UInt64($1)) &* 0x0000_0100_0000_01b3 }
     }
 
     public var table: String {

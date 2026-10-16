@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Changed
 
+- Internal: the weights that decide when to fix a word are fitted on generated examples instead of set by hand, behind a held-out check that they fix no correct word (no change in results on the checked pairs).
+
+### Changed
+
 - Internal: the scorer weighs named features instead of inline constants, so the weights can be fitted (no change in results).
 
 ## [0.1.1] - 2026-10-16

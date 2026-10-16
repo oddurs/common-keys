@@ -80,7 +80,15 @@ The engine is a library, `WorldKey`, in layers. Each layer knows nothing of the 
      with a combining mark, or two scripts in one word;
    - the language recognizer, between readings in the same script only;
    - what the user taught (`Memory`).
-4. **Decisions.** `Detector` compares the readings and decides at the end of a word, mid-word,
+4. **Weights.** Each reading becomes a `FeatureVector`, and `Weights` turn the difference between two
+   readings into a score. The weights are fitted, not chosen: `worldkey train` types dictionary words
+   on their own keyboard (leave them alone) and on every other one (fix them back), and fits a
+   logistic regression that counts a false fix 20 times worse than a missed one. The threshold sits
+   above every training example that must stay unfixed. One word in five is held out of training by
+   a fixed hash, and `worldkey eval --split heldOut --engine rules|model` compares the fitted weights
+   with the hand-tuned ones on those words only. `Sources/WorldKey/TrainedWeights.swift` is the
+   generated result, so a change to it shows up in review.
+5. **Decisions.** `Detector` compares the readings and decides at the end of a word, mid-word,
    or when asked. It also says which language a word was meant in, which feeds per-app learning.
 
 Above the engine, the app adds the event tap, injection and UI. Swapping text depends on the kinds
@@ -94,7 +102,8 @@ or the keys replayed, because an input method would read typed Unicode as key pr
     worldkey convert ghbdtn --from US --to Russian # привет
     worldkey convert 안녕하세요 --from 2SetKorean --to US   # dkssudgktpdy
     worldkey detect /etta --from US                # þetta  com.apple.keylayout.Icelandic
-    worldkey eval --keyboards US,Russian --words 150
+    worldkey eval --keyboards US,Russian --words 150 --split heldOut --engine rules|model
+    worldkey train --write Sources/WorldKey/TrainedWeights.swift
 
 Add `--json` for output another program can parse. The `WorldKey` library product is the same engine
 for Swift code.

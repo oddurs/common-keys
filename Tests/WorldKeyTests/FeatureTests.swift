@@ -37,7 +37,7 @@ struct FeatureTests {
             keys("/etta"), typedIn: FakeLayout.us, candidates: [FakeLayout.us, FakeLayout.icelandic],
             memory: Memory(), lexicon: lexicon
         ).first
-        #expect(decision?.gain == Weights.hand.score(evidence))
+        #expect(decision?.gain == detector.weights.score(evidence))
     }
 
     @Test func weightsRoundTripAsReadableJSON() throws {

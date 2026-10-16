@@ -11,6 +11,8 @@ let usage = """
       convert <text> --from <kb> [--to <kb>]  what text typed on <kb> was meant to say on another keyboard
       detect <text> --from <kb>               whether text was typed on the wrong keyboard, among enabled ones
       eval [--keyboards a,b,…] [--words N]    accuracy on dictionary words typed on the right and wrong keyboard
+           [--engine rules|model] [--split all|train|heldOut]
+      train [--words N] [--write path]        fit the combiner's weights on synthetic examples
 
     Keyboards are named by id (com.apple.keylayout.US) or its last part (US, Icelandic, 2SetKorean).
     Add --json for machine-readable output.
@@ -43,6 +45,20 @@ func keyboard(_ name: String) throws -> any Keyboard {
             ?? all.first(where: { $0.name.lowercased() == lowered })
     else { throw Failure(description: "no keyboard named \(name); see `worldkey sources --all`") }
     return match
+}
+
+/// The pairs the combiner is fitted on: the README's accuracy table.
+let trainingPairs = ["Icelandic", "Russian", "2SetKorean", "Greek", "Hebrew", "Arabic", "French", "German"].map {
+    ["US", $0]
+}
+
+@MainActor
+func detector(_ engine: String?) throws -> Detector {
+    switch engine {
+    case nil, "model": Detector(weights: .trained)
+    case "rules": Detector(weights: .hand)
+    case let other?: throw Failure(description: "unknown engine \(other); use rules or model")
+    }
 }
 
 @MainActor
@@ -119,8 +135,32 @@ func run() throws {
         let names = option("--keyboards")?.split(separator: ",").map(String.init)
         let keyboards = try names?.map(keyboard) ?? enabled
         let count = Int(option("--words") ?? "") ?? 200
-        let report = Evaluation.run(keyboards, words: count, lexicon: lexicon)
+        let split =
+            try option("--split").map { name in
+                guard let split = Split(rawValue: name) else { throw Failure(description: "unknown split \(name)") }
+                return split
+            } ?? .all
+        let report = Evaluation.run(
+            keyboards, words: count, lexicon: lexicon, detector: try detector(option("--engine")), split: split)
         try emit(report) { report.table }
+
+    case "train":
+        let count = Int(option("--words") ?? "") ?? 400
+        let sets = try trainingPairs.map { pair in try pair.map(keyboard) }
+        let examples = Training.examples(sets, words: count, split: .train, lexicon: lexicon)
+        let weights = Training.fit(examples)
+        let positives = examples.filter(\.meant).count
+        let note =
+            "Fitted on \(examples.count) examples (\(positives) to fix, \(examples.count - positives) to leave), "
+            + "\(count) training words per language, U.S. paired with \(trainingPairs.map { $0[1] }.joined(separator: ", "))."
+        if let path = option("--write") {
+            try Training.source(weights, note: note).write(toFile: path, atomically: true, encoding: .utf8)
+        }
+        try emit(weights) {
+            ([note, String(format: "threshold %.4f", weights.threshold)]
+                + Feature.allCases.map { String(format: "  %-20@ %+.4f", $0.rawValue, weights.values[$0] ?? 0) })
+                .joined(separator: "\n")
+        }
 
     default:
         throw Failure(description: usage)
