@@ -5,6 +5,8 @@
 
 A menu bar app that fixes words typed on the wrong keyboard layout, for every keyboard macOS has. **[oddurs.github.io/common-tools/keys](https://oddurs.github.io/common-tools/keys/)** · [Docs](https://oddurs.github.io/common-tools/keys/docs/)
 
+![The menu in light and dark, and on the first day before anything is learned](docs/menu.png)
+
 - Type `/etta ` on U.S. and it becomes `þetta `; `ghbdtn` becomes `привет`, `dkssud` becomes `안녕`.
 - It learns which keys you mix up and which language you write in each app, and keeps you on the right one.
 - ⌘Z right after a fix undoes it, and that word is left alone from then on.
@@ -49,7 +51,9 @@ Common Keys lives in the menu bar as the flag of the current layout. The menu sh
 - **Per-app layouts**: from the menu or Settings, pin the front app to one layout, or pause Common Keys in it. Terminals and code editors start paused.
 - **Forget Everything…** in Settings clears what it has learned.
 
-Learned data lives in `~/Library/Application Support/LangSmart/` (the folder keeps the app's former name).
+Learned data lives in `~/Library/Application Support/LangSmart/` (the folder keeps the app's former name):
+`memory.json` holds learned words, mixed-up keys and each app's usual layout, and `stats.json` holds the
+menu's daily counts for the last month, never the words themselves.
 
 ## WorldKey
 

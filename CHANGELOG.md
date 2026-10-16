@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Changed
+
+- Internal: the scorer weighs named features instead of inline constants, so the weights can be fitted (no change in results).
+
+## [0.1.1] - 2026-10-16
+
+### Changed
+
+- New app icon, in the blue glass style shared by Common Stats, Common Keys, and Common Bar.
+
+### Fixed
+
+- The hourly chart in the dropdown labels its axis by the hours it shows (12 AM, 6 AM, 12 PM, 6 PM) instead of ending in "Now", which pointed at the wrong bar for most of the day.
+
 ## [0.1.0] - 2026-10-16
 
 ### Added
@@ -19,5 +33,6 @@ All notable changes to this project are documented here. The format follows [Kee
 - The `WorldKey` library and the `worldkey` command: list input sources, convert text between layouts, detect the intended layout, and evaluate accuracy, with `--json` output.
 - Universal (Apple silicon and Intel) release builds of the app and the `worldkey` command.
 
-[Unreleased]: https://github.com/oddurs/common-keys/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/oddurs/common-keys/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/oddurs/common-keys/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/oddurs/common-keys/releases/tag/v0.1.0
