@@ -18,7 +18,7 @@ scripts/task check      # lint + test + build, what CI runs
 ## Workflow
 
 - Never commit to `main`. It moves only when a pull request is merged; the `pre-push` hook and branch protection enforce this.
-- One unit of work, one worktree, one branch, one pull request: `scripts/agent start <type>/<slug>`, work in the printed path, `scripts/agent commit`, `scripts/agent pr`, then `scripts/agent done` after the merge.
+- One unit of work, one worktree, one branch, one pull request: `scripts/agent start <type>/<slug>`, then work in the printed path and finish with `scripts/agent ship "<type>(scope): subject" "<why>" --body-file <pr.md>`, where the body states the problem, the approach, and where a reviewer should be sceptical. It commits, checks, opens the pull request with auto-merge, keeps it rebased while CI runs, and cleans up after the merge. If it stops on a failed check or a conflict, fix the cause and run it again.
 - Branch types: `feat fix chore docs perf refactor test`.
 - `scripts/task check` must be green before a pull request. Never use `--no-verify`.
 - A pull request description states the problem, the approach, and where a reviewer should be sceptical.

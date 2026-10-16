@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-# The workflow: one unit of work, one worktree, one branch, one PR.
-# Commands: doctor start check commit pr sync done list
+# The workflow: one unit of work, one worktree, one branch, one PR, merged automatically.
+# Commands: doctor start check commit pr ship sync done list
 
 root="$(git rev-parse --show-toplevel)"
 repo="$(basename "$(git -C "$root" rev-parse --path-format=absolute --git-common-dir | xargs dirname)")"
@@ -80,9 +80,65 @@ pr)
     echo "==> checking"
     "$root/scripts/task" check
     echo "==> pushing $branch"
-    git push --quiet -u origin "$branch"
-    echo "==> opening pull request"
-    gh pr create --fill "$@"
+    git push --quiet --force-with-lease -u origin "$branch"
+    if gh pr view "$branch" --json number >/dev/null 2>&1; then
+        echo "==> pull request already open"
+    else
+        echo "==> opening pull request"
+        # The first commit names the unit of work; later ones are fixes along the way.
+        gh pr create --fill-first "$@"
+    fi
+    title="$(gh pr view "$branch" --json title --jq .title)"
+    echo "$title" | grep -Eq '^(feat|fix|chore|docs|perf|refactor|test|build|ci|style|revert)(\([a-z0-9._/-]+\))?!?: [^ ].*[^.]$' ||
+        die "pull request title '$title' is not a Conventional Commit; fix it with gh pr edit --title"
+    number="$(gh pr view "$branch" --json number --jq .number)"
+    # Squash-merges by itself once the required check passes, under the pull request's title.
+    echo "==> enabling auto-merge"
+    gh pr merge "$branch" --auto --squash --subject "$title (#$number)"
+    gh pr view "$branch" --json url --jq .url
+    ;;
+ship)
+    # Commit (when given a message), open the pull request with auto-merge, keep it current with the
+    # default branch while CI runs, and clean up once it merges. Stops on a failed check or a conflict.
+    branch="$(current_branch)"
+    base="$(default_branch)"
+    [ "$branch" != "$base" ] || die "on the default branch; start a branch with 'scripts/agent start'"
+    # ship ["<subject>" ["<why>"]] [--body-file <pr.md> ...]: flags go to gh pr create.
+    if [ $# -ge 1 ] && [ "${1#--}" = "$1" ]; then
+        subject="$1"
+        shift
+        git add -A
+        if [ $# -ge 1 ] && [ "${1#--}" = "$1" ]; then
+            git commit --quiet -m "$subject" -m "$1"
+            shift
+        else
+            git commit --quiet -m "$subject"
+        fi
+    fi
+    [ -z "$(git status --porcelain)" ] || die "uncommitted changes; pass a commit message or commit them first"
+    "$0" pr "$@"
+    echo "==> waiting for $branch to merge"
+    while :; do
+        state="$(gh pr view "$branch" --json state --jq .state)"
+        [ "$state" = "MERGED" ] && break
+        [ "$state" = "CLOSED" ] && die "the pull request was closed without merging"
+        git fetch --quiet origin
+        if ! git merge-base --is-ancestor "origin/$base" HEAD; then
+            # Test against what it will land on, not what it branched from.
+            echo "==> $base moved; rebasing and checking again"
+            git rebase --quiet "origin/$base" || die "conflicts with $base; resolve them, then run 'scripts/agent ship' again"
+            "$root/scripts/task" check
+            git push --quiet --force-with-lease origin "$branch"
+        fi
+        # gh pr checks exits 1 on a failure, 8 while pending; "no checks reported" means not started yet.
+        checks=0
+        report="$(gh pr checks "$branch" 2>&1)" || checks=$?
+        case "$report" in *"no checks reported"*) checks=8 ;; esac
+        [ "$checks" -eq 1 ] && die "a check failed: $(gh pr view "$branch" --json url --jq .url)/checks"
+        sleep 15
+    done
+    echo "==> merged"
+    "$0" done
     ;;
 sync)
     base="$(default_branch)"
@@ -104,6 +160,12 @@ done)
     git -C "$main" branch --quiet -D "$branch"
     git -C "$main" worktree prune
     git -C "$main" fetch --quiet --prune origin
+    # Bring the primary checkout up to date, unless someone is working in it.
+    if [ "$(git -C "$main" rev-parse --abbrev-ref HEAD)" = "$base" ] && [ -z "$(git -C "$main" status --porcelain)" ]; then
+        git -C "$main" merge --quiet --ff-only "origin/$base" && echo "==> $main is at origin/$base"
+    else
+        echo "==> left $main as it is: not on $base, or it has changes"
+    fi
     echo "==> done; cd $main"
     ;;
 list)
@@ -115,7 +177,7 @@ list)
     done
     ;;
 *)
-    echo "usage: scripts/agent {doctor|start <type>/<slug>|check|commit <msg> [body]|pr [--draft]|sync|done|list}" >&2
+    echo "usage: scripts/agent {doctor|start <type>/<slug>|check|commit <msg> [body]|pr [--draft]|ship [<msg> [body]] [--body-file f]|sync|done|list}" >&2
     exit 2
     ;;
 esac
