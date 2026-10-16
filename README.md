@@ -96,7 +96,9 @@ The engine is a library, `WorldKey`, in layers. Each layer knows nothing of the 
    above every training example that must stay unfixed. One word in five is held out of training by
    a fixed hash, and `worldkey eval --split heldOut --engine rules|model` compares the fitted weights
    with the hand-tuned ones on those words only. `Sources/WorldKey/TrainedWeights.swift` is the
-   generated result, so a change to it shows up in review.
+   generated result, so a change to it shows up in review. A second set, `trainedPrefix`, judges the
+   start of a word still being typed, with "some word starts this way" in place of "this is a word".
+   `worldkey eval --prefixes` gates it: no start of a correctly typed word may ever be changed.
 5. **Decisions.** `Detector` compares the readings and decides at the end of a word, mid-word,
    or when asked. It also says which language a word was meant in, which feeds per-app learning.
 
@@ -111,7 +113,7 @@ or the keys replayed, because an input method would read typed Unicode as key pr
     worldkey convert ghbdtn --from US --to Russian # привет
     worldkey convert 안녕하세요 --from 2SetKorean --to US   # dkssudgktpdy
     worldkey detect /etta --from US                # þetta  com.apple.keylayout.Icelandic
-    worldkey eval --keyboards US,Russian --words 150 --split heldOut --engine rules|model
+    worldkey eval --keyboards US,Russian --words 150 --split heldOut --engine rules|model [--prefixes]
     worldkey train --write Sources/WorldKey/TrainedWeights.swift
 
 Add `--json` for output another program can parse. The `WorldKey` library product is the same engine

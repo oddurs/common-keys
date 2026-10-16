@@ -48,9 +48,29 @@ public enum Training {
     /// word lists. These keep their hand weights, scaled to the fitted ones.
     static let fixed: Set<Feature> = [.taught, .readingAccepted, .readingLength, .readingRejected, .unmodeledMethod]
 
+    /// The starts of words, three keys or more and short of the whole word, typed on their own
+    /// keyboard and on the others: the examples for deciding mid-word.
+    @MainActor
+    public static func prefixExamples(
+        _ sets: [[any Keyboard]], words count: Int, split: Split, lexicon: SystemLexicon
+    ) -> [Example] {
+        examples(sets, words: count, split: split, lexicon: lexicon) { strokes in
+            guard strokes.count > 3 else { return [] }
+            return (3...min(6, strokes.count - 1)).map { Array(strokes.prefix($0)) }
+        }
+    }
+
     @MainActor
     public static func examples(
         _ sets: [[any Keyboard]], words count: Int, split: Split, lexicon: SystemLexicon
+    ) -> [Example] {
+        examples(sets, words: count, split: split, lexicon: lexicon) { [$0] }
+    }
+
+    @MainActor
+    private static func examples(
+        _ sets: [[any Keyboard]], words count: Int, split: Split, lexicon: SystemLexicon,
+        pieces: ([KeyStroke]) -> [[KeyStroke]]
     ) -> [Example] {
         let detector = Detector()
         var examples: [Example] = []
@@ -58,21 +78,26 @@ public enum Training {
         defer { lexicon.modelSplit = .all }
         for keyboards in sets {
             for meant in keyboards where meant.kind != .converting && lexicon.wordList(for: meant) != nil {
-                for (word, strokes) in Evaluation.sample(meant, count, lexicon, split: split) {
-                    for other in keyboards where other.id != meant.id && other.kind != .converting {
-                        guard other.text(for: strokes) != word else { continue }
-                        // Typed right: reading it on the other keyboard would be a false fix.
-                        examples.append(
-                            Example(
-                                evidence: detector.evidence(
-                                    strokes, typedIn: meant, meantFor: other, memory: Memory(), lexicon: lexicon),
-                                meant: false))
-                        // Typed on the other keyboard: reading it on this one is the fix.
-                        examples.append(
-                            Example(
-                                evidence: detector.evidence(
-                                    strokes, typedIn: other, meantFor: meant, memory: Memory(), lexicon: lexicon),
-                                meant: true))
+                for (_, whole) in Evaluation.sample(meant, count, lexicon, split: split) {
+                    let prefix = pieces(whole).first.map { $0.count < whole.count } ?? false
+                    for strokes in pieces(whole) {
+                        for other in keyboards where other.id != meant.id && other.kind != .converting {
+                            guard other.text(for: strokes) != meant.text(for: strokes) else { continue }
+                            // Typed right: reading it on the other keyboard would be a false fix.
+                            examples.append(
+                                Example(
+                                    evidence: detector.evidence(
+                                        strokes, typedIn: meant, meantFor: other, memory: Memory(), lexicon: lexicon,
+                                        prefix: prefix),
+                                    meant: false))
+                            // Typed on the other keyboard: reading it on this one is the fix.
+                            examples.append(
+                                Example(
+                                    evidence: detector.evidence(
+                                        strokes, typedIn: other, meantFor: meant, memory: Memory(), lexicon: lexicon,
+                                        prefix: prefix),
+                                    meant: true))
+                        }
                     }
                 }
             }
@@ -145,20 +170,25 @@ public enum Training {
     }
 
     /// The weights as Swift source, for checking in where review can read them.
-    public static func source(_ weights: Weights, note: String) -> String {
-        let lines = Feature.allCases.map { feature in
-            "        .\(feature.rawValue): \(format(weights.values[feature] ?? 0)),"
+    public static func source(_ sets: [(name: String, weights: Weights, note: String)]) -> String {
+        let declarations = sets.map { name, weights, note in
+            let lines = Feature.allCases.map { feature in
+                "            .\(feature.rawValue): \(format(weights.values[feature] ?? 0)),"
+            }
+            return """
+                    /// \(note)
+                    public static let \(name) = Weights(
+                        [
+                \(lines.joined(separator: "\n"))
+                        ],
+                        threshold: \(format(weights.threshold)))
+                """
         }
         return """
             // Generated by `worldkey train --write`. Regenerate rather than edit.
 
             extension Weights {
-                /// \(note)
-                public static let trained = Weights(
-                    [
-            \(lines.map { "    " + $0 }.joined(separator: "\n"))
-                    ],
-                    threshold: \(format(weights.threshold)))
+            \(declarations.joined(separator: "\n\n"))
             }
 
             """

@@ -18,12 +18,18 @@ public struct Detector {
     public var threshold: Double
     public var minLength: Int
     public var weights: Weights
+    /// Weights for the start of a word still being typed; nil judges it by the plain rule instead.
+    public var prefixWeights: Weights?
 
     /// Weights default to the fitted ones; `.hand` is the rule-tuned baseline they are gated against.
-    public init(threshold: Double? = nil, minLength: Int = 2, weights: Weights = .trained) {
+    public init(
+        threshold: Double? = nil, minLength: Int = 2, weights: Weights = .trained,
+        prefixWeights: Weights? = .trainedPrefix
+    ) {
         self.threshold = threshold ?? weights.threshold
         self.minLength = minLength
         self.weights = weights
+        self.prefixWeights = prefixWeights
     }
 
     /// The fix to apply when a word ends, if any.
@@ -58,6 +64,26 @@ public struct Detector {
         guard strokes.count >= max(minLength, 3), current.kind == .direct else { return nil }
         if memory.exceptions[strokes.signature]?.layoutID == current.id { return nil }
         let original = current.text(for: strokes)
+        guard !Self.looksLikeAddress(original) else { return nil }
+        if let prefixWeights {
+            let base = Scorer.features(original, on: current, lexicon: lexicon, prefix: true)
+            return candidates.compactMap { target -> Decision? in
+                guard target.id != current.id, target.kind != .converting else { return nil }
+                let text = target.text(for: strokes)
+                guard text != original, !Self.looksLikeMachineText(text) else { return nil }
+                let evidence = evidence(
+                    strokes, original: original, base: base, typedIn: current, readAs: text, on: target,
+                    memory: memory, lexicon: lexicon, prefix: true)
+                let gain = prefixWeights.score(evidence)
+                guard gain >= prefixWeights.threshold else { return nil }
+                return Decision(
+                    targetID: target.id, original: original, replacement: text, learned: evidence[.taught] > 0,
+                    gain: gain)
+            }
+            .max { $0.gain < $1.gain }
+        }
+        // The rule the fitted weights replace, kept as their baseline: no word of the current
+        // language starts this way and some word of another does.
         guard !Self.looksLikeMachineText(original),
             lexicon.startsWord(Scorer.core(original), language: current.language) == false
         else { return nil }
@@ -97,28 +123,30 @@ public struct Detector {
 
     /// The evidence that keys typed on `current` were meant for `candidate`: each feature of the
     /// candidate's reading less the same feature of the reading on screen, plus what the pair adds.
+    /// `prefix` is true when the keys are the start of a word still being typed.
     public func evidence(
         _ strokes: [KeyStroke], typedIn current: any Keyboard, meantFor candidate: any Keyboard, memory: Memory,
-        lexicon: some Lexicon
+        lexicon: some Lexicon, prefix: Bool = false
     ) -> FeatureVector {
         let original = current.text(for: strokes)
         return evidence(
-            strokes, original: original, base: Scorer.features(original, on: current, lexicon: lexicon),
-            typedIn: current, readAs: candidate.text(for: strokes), on: candidate, memory: memory, lexicon: lexicon)
+            strokes, original: original,
+            base: Scorer.features(original, on: current, lexicon: lexicon, prefix: prefix), typedIn: current,
+            readAs: candidate.text(for: strokes), on: candidate, memory: memory, lexicon: lexicon, prefix: prefix)
     }
 
     private func evidence(
         _ strokes: [KeyStroke], original: String, base: FeatureVector, typedIn current: any Keyboard,
-        readAs text: String, on candidate: any Keyboard, memory: Memory, lexicon: some Lexicon
+        readAs text: String, on candidate: any Keyboard, memory: Memory, lexicon: some Lexicon, prefix: Bool = false
     ) -> FeatureVector {
-        let meant = Scorer.features(text, on: candidate, lexicon: lexicon)
+        let meant = Scorer.features(text, on: candidate, lexicon: lexicon, prefix: prefix)
         var evidence = meant - base
         evidence[.bothKnown] = base[.knownWord] * meant[.knownWord]
         evidence[.taught] = memory.boost(strokes, from: current.id, to: candidate.id)
         evidence[.recognized] = Scorer.recognition(
             original, on: current, against: text, on: candidate, lexicon: lexicon)
-        if let shown = lexicon.typicality(Scorer.core(original), on: current),
-            let meant = lexicon.typicality(Scorer.core(text), on: candidate)
+        if let shown = lexicon.typicality(Scorer.core(original), on: current, complete: !prefix),
+            let meant = lexicon.typicality(Scorer.core(text), on: candidate, complete: !prefix)
         {
             // Clamped: a reading full of characters a language never uses is noise either way.
             evidence[.shownTypicality] = max(-5, shown)
@@ -203,9 +231,11 @@ enum Scorer {
     }
 
     /// The evidence about one reading of the keys, on the keyboard that reads them that way.
-    static func features(_ text: String, on keyboard: any Keyboard, lexicon: some Lexicon) -> FeatureVector {
+    static func features(_ text: String, on keyboard: any Keyboard, lexicon: some Lexicon, prefix: Bool = false)
+        -> FeatureVector
+    {
         guard keyboard.kind == .converting else {
-            return features(text, language: keyboard.baseLanguage, lexicon: lexicon)
+            return features(text, language: keyboard.baseLanguage, lexicon: lexicon, prefix: prefix)
         }
         // Only the shape of the reading says anything, and the longer a reading keeps to the
         // language's syllables, the less likely that is chance. An unknown method never wins alone.
@@ -239,7 +269,11 @@ enum Scorer {
         return theirs - mine
     }
 
-    static func features(_ text: String, language: String, lexicon: some Lexicon) -> FeatureVector {
+    /// For a `prefix`, the start of a word still being typed, word evidence becomes whether some word
+    /// starts this way.
+    static func features(_ text: String, language: String, lexicon: some Lexicon, prefix: Bool = false)
+        -> FeatureVector
+    {
         let (core, trailingCount) = trim(text)
         let alphabet = lexicon.alphabet(for: language)
         var features = FeatureVector()
@@ -265,13 +299,16 @@ enum Scorer {
         // a word. That makes "h'us", which is "hús" on the wrong layout, pass as English.
         let elided = core.count > 2 && joiners.contains(core[core.index(after: core.startIndex)])
         if core.count >= 2, !elided {
-            switch lexicon.isWord(String(core), language: language) {
+            let word = String(core)
+            switch prefix ? lexicon.startsWord(word, language: language) : lexicon.isWord(word, language: language) {
             case true?: features[.knownWord] = 1
             case false?: features[.unknownWord] = 1
             case nil:
                 // A reading has to earn its place some other way, such as a shipped word list.
                 features[.noDictionary] = 1
-                if lexicon.isListed(String(core), language: language) { features[.listedWord] = 1 }
+                let listed =
+                    prefix ? lexicon.startsListed(word, language: language) : lexicon.isListed(word, language: language)
+                if listed { features[.listedWord] = 1 }
             }
         }
         return features
