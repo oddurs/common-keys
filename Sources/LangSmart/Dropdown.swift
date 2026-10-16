@@ -338,7 +338,7 @@ enum Ink {
     }
 }
 
-/// Fixes per hour of today, the current hour marked, later hours left empty.
+/// Fixes per hour of today, the current hour marked, hours still to come shaded lighter.
 private struct HourBars: View {
     let counts: [Int]
     let now: Int
@@ -358,10 +358,10 @@ private struct HourBars: View {
                 }
             }
             .frame(height: 34)
-            HStack {
-                ForEach(["12 AM", "6", "12 PM", "6", "Now"], id: \.self) { label in
-                    Text(label)
-                    if label != "Now" { Spacer(minLength: 0) }
+            // Labels at 0, 6, 12 and 18 hours: four quarters of the row, each label at its quarter's start.
+            HStack(spacing: 0) {
+                ForEach(["12 AM", "6 AM", "12 PM", "6 PM"], id: \.self) { label in
+                    Text(label).frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             .font(.system(size: 9))
