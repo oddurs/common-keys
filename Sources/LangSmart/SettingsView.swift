@@ -6,26 +6,13 @@ import WorldKey
 /// The whole of Settings. Common Keys works out the rest by watching how you type.
 struct SettingsView: View {
     @Environment(Engine.self) private var engine
-    @State private var launchError: String?
+    @State private var loginError: String?
     @State private var confirmingReset = false
     private static let paused = "paused"
 
     var body: some View {
         @Bindable var prefs = engine.prefs
         Form {
-            Section {
-                Toggle("Launch at login", isOn: launchAtLogin)
-            } footer: {
-                if let launchError {
-                    Text(launchError).foregroundStyle(.red)
-                } else {
-                    Text(
-                        "Common Keys fixes words typed on the wrong keyboard and learns as you go. There is nothing else to set up."
-                    )
-                    .foregroundStyle(.secondary)
-                }
-            }
-
             Section("Shortcuts") {
                 LabeledContent("Next layout") {
                     ShortcutRecorder(shortcut: prefs.toggleShortcut) { new in
@@ -72,10 +59,24 @@ struct SettingsView: View {
                     Text("What it has learned")
                     Text(learnedSummary)
                 }
+            } header: {
+                Text("Learning")
             } footer: {
                 Text("Kept on this Mac only, in ~/Library/Application Support/LangSmart.")
                     .foregroundStyle(.secondary)
             }
+
+            Section {
+                Toggle("Open at login", isOn: openAtLogin)
+            } header: {
+                Text("General")
+            } footer: {
+                if let loginError {
+                    Text(loginError).foregroundStyle(.red)
+                }
+            }
+
+            CommonToolsSection()
         }
         .formStyle(.grouped)
         .frame(width: 460)
@@ -100,9 +101,13 @@ struct SettingsView: View {
         "\(n) \(noun)\(n == 1 ? "" : "s")"
     }
 
-    /// Apps with a rule of the user's: pinned or paused. Learned ones need no rule, so they stay out.
+    /// Apps with a rule of the user's: pinned or paused. Learned ones need no rule, so they stay out,
+    /// and so do apps not installed here: the defaults pause editors this Mac may not have, and a
+    /// row of bare bundle identifiers tells nobody anything. Their rule still applies if they arrive.
     private var apps: [String] {
-        Set(engine.prefs.appLayouts.keys).union(engine.prefs.excludedApps).sorted {
+        Set(engine.prefs.appLayouts.keys).union(engine.prefs.excludedApps).filter {
+            NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) != nil
+        }.sorted {
             AppLabel.name(of: $0).localizedCaseInsensitiveCompare(AppLabel.name(of: $1)) == .orderedAscending
         }
     }
@@ -145,7 +150,7 @@ struct SettingsView: View {
         }
     }
 
-    private var launchAtLogin: Binding<Bool> {
+    private var openAtLogin: Binding<Bool> {
         Binding(
             get: { SMAppService.mainApp.status == .enabled },
             set: { enable in
@@ -155,9 +160,9 @@ struct SettingsView: View {
                     } else {
                         try SMAppService.mainApp.unregister()
                     }
-                    launchError = nil
+                    loginError = nil
                 } catch {
-                    launchError = error.localizedDescription
+                    loginError = error.localizedDescription
                 }
             })
     }
