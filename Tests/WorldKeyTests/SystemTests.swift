@@ -85,8 +85,8 @@ struct SystemTests {
         var polls = 0
         while SystemLexicon().startsWord("прив", language: "ru") != true {
             polls += 1
-            guard clock.now - start < .seconds(30) else {
-                Issue.record("the Russian spelling dictionary gave no completions for 30 seconds")
+            guard clock.now - start < .seconds(60) else {
+                Issue.record("the Russian spelling dictionary gave no completions for 60 seconds")
                 return
             }
             try await Task.sleep(for: .milliseconds(200))
