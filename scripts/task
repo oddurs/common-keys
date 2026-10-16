@@ -1,0 +1,72 @@
+#!/bin/sh
+set -eu
+# The one seam CI and git hooks call. Verbs: fmt fmt:check lint test build check.
+
+cd "$(dirname "$0")/.."
+sources="Package.swift Sources Tests"
+
+bundle() {
+    app="build/LangSmart.app"
+    bin="$(swift build -c release --show-bin-path)/LangSmart"
+    echo "==> bundling $app"
+    rm -rf "$app"
+    mkdir -p "$app/Contents/MacOS"
+    cp "$bin" "$app/Contents/MacOS/LangSmart"
+    cp Resources/Info.plist "$app/Contents/Info.plist"
+    # macOS ties the Accessibility grant to the signature. A stable certificate keeps it across
+    # rebuilds; an ad-hoc signature changes every build and loses it. scripts/dev-cert makes one.
+    identity="LangSmart Development"
+    if security find-certificate -c "$identity" >/dev/null 2>&1; then
+        echo "==> signing with '$identity'"
+        codesign --force --sign "$identity" --identifier com.oddurs.langsmart "$app"
+    else
+        echo "==> signing ad-hoc; run scripts/dev-cert so Accessibility access survives rebuilds"
+        codesign --force --sign - --identifier com.oddurs.langsmart "$app"
+    fi
+    echo "==> built $app"
+    cp "$(swift build -c release --show-bin-path)/worldkey" build/worldkey
+    echo "==> built build/worldkey"
+}
+
+case "${1:-}" in
+fmt)
+    echo "==> formatting"
+    # shellcheck disable=SC2086
+    swift format format --in-place --recursive $sources
+    ;;
+fmt:check)
+    echo "==> checking format"
+    # shellcheck disable=SC2086
+    swift format lint --strict --recursive $sources
+    ;;
+lint)
+    echo "==> building with warnings as errors"
+    swift build -Xswiftc -warnings-as-errors
+    ;;
+test)
+    echo "==> testing"
+    # Command Line Tools ship swift-testing outside the default search paths.
+    clt="/Library/Developer/CommandLineTools/Library/Developer"
+    if [ "$(xcode-select -p)" = "/Library/Developer/CommandLineTools" ]; then
+        swift test -Xswiftc -F -Xswiftc "$clt/Frameworks" \
+            -Xlinker -rpath -Xlinker "$clt/Frameworks" -Xlinker -rpath -Xlinker "$clt/usr/lib"
+    else
+        swift test
+    fi
+    ;;
+build)
+    echo "==> building release"
+    swift build -c release
+    bundle
+    ;;
+check)
+    "$0" fmt:check
+    "$0" lint
+    "$0" test
+    "$0" build
+    ;;
+*)
+    echo "usage: scripts/task fmt|fmt:check|lint|test|build|check" >&2
+    exit 2
+    ;;
+esac

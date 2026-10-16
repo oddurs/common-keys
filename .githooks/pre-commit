@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+echo "pre-commit: format check and lint"
+scripts/task fmt:check
+exec scripts/task lint

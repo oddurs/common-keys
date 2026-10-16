@@ -1,0 +1,38 @@
+name: Bug report
+description: A word was fixed when it shouldn't be, wasn't fixed when it should, or something misbehaves.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: Include what you typed, what LangSmart turned it into (or left alone), and what you expected. Name the app you were typing in.
+    validations:
+      required: true
+  - type: input
+    id: keyboards
+    attributes:
+      label: Keyboards
+      description: The input sources you have enabled, and the one that was active.
+      placeholder: "U.S. (active), Icelandic"
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: If `worldkey detect <word> --from <keyboard>` shows the same result, paste its output.
+  - type: input
+    id: version
+    attributes:
+      label: LangSmart version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "macOS 26.5"
+    validations:
+      required: true

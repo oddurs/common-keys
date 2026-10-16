@@ -1,0 +1,9 @@
+.build/
+build/
+*.xcodeproj
+.swiftpm/
+.DS_Store
+.worktrees/
+site/node_modules/
+site/.svelte-kit/
+site/build/

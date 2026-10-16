@@ -1,0 +1,33 @@
+#!/bin/sh
+set -eu
+# Creates a self-signed code signing certificate in the login keychain, once.
+#
+# macOS ties the Accessibility grant to the app's signature. Ad-hoc signatures change with every
+# build, so every rebuild lost the grant. A certificate that stays put keeps it.
+
+name="LangSmart Development"
+keychain="$HOME/Library/Keychains/login.keychain-db"
+
+if security find-certificate -c "$name" "$keychain" >/dev/null 2>&1; then
+    echo "==> '$name' is already in the login keychain; nothing to do"
+    exit 0
+fi
+
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+
+echo "==> generating '$name' (valid ten years)"
+# The system LibreSSL writes PKCS#12 files that security import can read; OpenSSL 3 needs -legacy.
+/usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+    -subj "/CN=$name" \
+    -addext "basicConstraints=critical,CA:false" \
+    -addext "keyUsage=critical,digitalSignature" \
+    -addext "extendedKeyUsage=critical,codeSigning" \
+    -keyout "$work/key.pem" -out "$work/cert.pem"
+/usr/bin/openssl pkcs12 -export -inkey "$work/key.pem" -in "$work/cert.pem" \
+    -name "$name" -out "$work/identity.p12" -passout pass:langsmart
+
+echo "==> importing into the login keychain, usable by codesign"
+security import "$work/identity.p12" -k "$keychain" -P langsmart -T /usr/bin/codesign >/dev/null
+
+echo "==> done. Next: scripts/task build, then allow LangSmart in Accessibility one last time."
