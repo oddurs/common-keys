@@ -1,5 +1,10 @@
+import AppKit
 import Testing
 import WorldKey
+
+/// Hosted CI runners can lack spelling dictionaries a desktop install has. Reading Russian off the
+/// keys works without one; deciding the reading is a word does not.
+private let hasRussianDictionary = NSSpellChecker.shared.availableLanguages.contains("ru")
 
 /// The real layouts, input methods and spell checker on this Mac.
 @MainActor
@@ -77,8 +82,12 @@ struct SystemTests {
         #expect(decide(typed, on: icelandic, with: us) == nil)
     }
 
-    @Test func acrossScripts() {
+    @Test(.enabled(if: hasRussianDictionary, "needs the Russian spelling dictionary"))
+    func russianOnUSIsFixed() {
         #expect(decide("ghbdtn", on: us, with: russian)?.replacement == "привет")
+    }
+
+    @Test func acrossScripts() {
         #expect(decide("hello", on: russian, with: us)?.replacement == "hello")
         #expect(decide("hello", on: us, with: russian) == nil)
         #expect(decide("akuo", on: us, with: hebrew)?.replacement == "שלום")
@@ -94,7 +103,8 @@ struct SystemTests {
         #expect(decide("make", on: us, with: japanese) == nil)
     }
 
-    @Test func fixesAsYouTypeOnlyWhenNoWordStartsThatWay() {
+    @Test(.enabled(if: hasRussianDictionary, "needs the Russian spelling dictionary"))
+    func fixesAsYouTypeOnlyWhenNoWordStartsThatWay() {
         let detector = Detector()
         let early = detector.decidePrefix(
             keys("ghbd"), typedIn: us, candidates: [us, russian], memory: Memory(), lexicon: lexicon)
