@@ -17,10 +17,12 @@ public struct Detector {
     /// How much more plausible another reading must be before acting without being asked.
     public var threshold: Double
     public var minLength: Int
+    public var weights: Weights
 
-    public init(threshold: Double = 2, minLength: Int = 2) {
+    public init(threshold: Double = 2, minLength: Int = 2, weights: Weights = .hand) {
         self.threshold = threshold
         self.minLength = minLength
+        self.weights = weights
     }
 
     /// The fix to apply when a word ends, if any.
@@ -76,20 +78,43 @@ public struct Detector {
         lexicon: some Lexicon
     ) -> [Decision] {
         let original = current.text(for: strokes)
-        let base = Scorer.score(original, on: current, lexicon: lexicon)
+        let base = Scorer.features(original, on: current, lexicon: lexicon)
         return candidates.compactMap { keyboard -> Decision? in
             guard keyboard.id != current.id else { return nil }
             let text = keyboard.text(for: strokes)
             // A converting method's reading is the same letters; what changes is who gets them.
             guard !text.isEmpty, text != original || keyboard.kind == .converting else { return nil }
-            let boost = memory.boost(strokes, from: current.id, to: keyboard.id)
-            let gain =
-                Scorer.score(text, on: keyboard, lexicon: lexicon) - base + boost
-                + Scorer.recognition(original, on: current, against: text, on: keyboard, lexicon: lexicon)
+            let evidence = evidence(
+                strokes, original: original, base: base, typedIn: current, readAs: text, on: keyboard, memory: memory,
+                lexicon: lexicon)
             return Decision(
-                targetID: keyboard.id, original: original, replacement: text, learned: boost > 0, gain: gain)
+                targetID: keyboard.id, original: original, replacement: text, learned: evidence[.taught] > 0,
+                gain: weights.score(evidence))
         }
         .sorted { $0.gain > $1.gain }
+    }
+
+    /// The evidence that keys typed on `current` were meant for `candidate`: each feature of the
+    /// candidate's reading less the same feature of the reading on screen, plus what the pair adds.
+    public func evidence(
+        _ strokes: [KeyStroke], typedIn current: any Keyboard, meantFor candidate: any Keyboard, memory: Memory,
+        lexicon: some Lexicon
+    ) -> FeatureVector {
+        let original = current.text(for: strokes)
+        return evidence(
+            strokes, original: original, base: Scorer.features(original, on: current, lexicon: lexicon),
+            typedIn: current, readAs: candidate.text(for: strokes), on: candidate, memory: memory, lexicon: lexicon)
+    }
+
+    private func evidence(
+        _ strokes: [KeyStroke], original: String, base: FeatureVector, typedIn current: any Keyboard,
+        readAs text: String, on candidate: any Keyboard, memory: Memory, lexicon: some Lexicon
+    ) -> FeatureVector {
+        var evidence = Scorer.features(text, on: candidate, lexicon: lexicon) - base
+        evidence[.taught] = memory.boost(strokes, from: current.id, to: candidate.id)
+        evidence[.recognized] = Scorer.recognition(
+            original, on: current, against: text, on: candidate, lexicon: lexicon)
+        return evidence
     }
 
     /// The keyboard whose reading of the keys is clearly best among all candidates, the one it was
@@ -101,7 +126,8 @@ public struct Detector {
         guard strokes.count >= max(minLength, 2), candidates.count > 1 else { return nil }
         let scored = candidates.map { keyboard in
             let text = keyboard.text(for: strokes)
-            return (id: keyboard.id, text: text, score: Scorer.score(text, on: keyboard, lexicon: lexicon))
+            let score = weights.score(Scorer.features(text, on: keyboard, lexicon: lexicon))
+            return (id: keyboard.id, text: text, score: score)
         }
         .sorted { $0.score > $1.score }
         guard !Self.looksLikeMachineText(scored[0].text), scored[0].score - scored[1].score >= 1 else {
@@ -140,8 +166,8 @@ public struct Detector {
     }
 }
 
-/// How plausible a reading is as a word of its keyboard's language. Higher is better; only
-/// differences between readings of the same keys matter.
+/// The evidence about a reading as a word of its keyboard's language. Weights turn it into a score;
+/// only differences between readings of the same keys matter.
 @MainActor
 enum Scorer {
     private static let leading: Set<Character> = ["(", "\"", "'", "«", "“", "‘", "„", "¿", "¡"]
@@ -166,16 +192,25 @@ enum Scorer {
         return (core, trailingCount)
     }
 
-    static func score(_ text: String, on keyboard: any Keyboard, lexicon: some Lexicon) -> Double {
+    /// The evidence about one reading of the keys, on the keyboard that reads them that way.
+    static func features(_ text: String, on keyboard: any Keyboard, lexicon: some Lexicon) -> FeatureVector {
         guard keyboard.kind == .converting else {
-            return score(text, language: keyboard.baseLanguage, lexicon: lexicon)
+            return features(text, language: keyboard.baseLanguage, lexicon: lexicon)
         }
         // Only the shape of the reading says anything, and the longer a reading keeps to the
         // language's syllables, the less likely that is chance. An unknown method never wins alone.
+        var features = FeatureVector()
         guard let phonotactics = (keyboard as? ConvertingKeyboard)?.phonotactics, text.count >= 4 else {
-            return -1
+            features[.unmodeledMethod] = 1
+            return features
         }
-        return phonotactics.accepts(text) ? min(2 + 0.25 * Double(text.count - 4), 4) : -2
+        if phonotactics.accepts(text) {
+            features[.readingAccepted] = 1
+            features[.readingLength] = min(0.25 * Double(text.count - 4), 2)
+        } else {
+            features[.readingRejected] = 1
+        }
+        return features
     }
 
     /// The recognizer's say between two readings in one script, where it can tell languages apart.
@@ -194,36 +229,38 @@ enum Scorer {
         return theirs - mine
     }
 
-    static func score(_ text: String, language: String, lexicon: some Lexicon) -> Double {
+    static func features(_ text: String, language: String, lexicon: some Lexicon) -> FeatureVector {
         let (core, trailingCount) = trim(text)
         let alphabet = lexicon.alphabet(for: language)
-        var score = -0.5 * Double(trailingCount) - Orthography.penalty(core)
+        var features = FeatureVector()
+        features[.trailingPunctuation] = Double(trailingCount)
+        features[.orthography] = Orthography.penalty(core)
         var clean = true
         var letters = 0
         for character in core where !joiners.contains(character) && !character.isNumber {
             if character.isLetter || character.unicodeScalars.allSatisfy(\.properties.isAlphabetic) {
                 letters += 1
                 if let alphabet, !character.lowercased().unicodeScalars.allSatisfy(alphabet.contains) {
-                    score -= 0.5
+                    features[.foreignLetters] += 1
                     clean = false
                 }
             } else {
                 // A symbol inside a word is the strongest sign of the wrong layout: `/etta` for `þetta`.
-                score -= 2
+                features[.symbols] += 1
                 clean = false
             }
         }
-        if clean && letters > 0 { score += 1 }
+        if clean && letters > 0 { features[.clean] = 1 }
         // Spell checkers read "x'…" as an elision, like "l'homme", and accept it whenever the rest is
         // a word. That makes "h'us", which is "hús" on the wrong layout, pass as English.
         let elided = core.count > 2 && joiners.contains(core[core.index(after: core.startIndex)])
         if core.count >= 2, !elided {
             switch lexicon.isWord(String(core), language: language) {
-            case true?: score += 3
-            case false?: score -= 1
-            case nil: score -= 0.5  // No dictionary: a reading has to earn its place some other way.
+            case true?: features[.knownWord] = 1
+            case false?: features[.unknownWord] = 1
+            case nil: features[.noDictionary] = 1  // A reading has to earn its place some other way.
             }
         }
-        return score
+        return features
     }
 }
