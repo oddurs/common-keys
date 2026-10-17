@@ -117,12 +117,15 @@ struct SystemTests {
     }
 
     @Test func fixesAsYouTypeOnlyWhenNoWordStartsThatWay() async throws {
-        let completing = try await waitForRussianCompletions()
+        _ = try await waitForRussianCompletions()
         let detector = Detector()
         let early = detector.decidePrefix(
             keys("ghbd"), typedIn: us, candidates: [us, russian], memory: Memory(), lexicon: lexicon)
-        // Mid-word needs to know what words start this way; without completions it waits for the space.
-        #expect(early?.replacement == (completing ? "прив" : nil))
+        // Mid-word needs to know what words start this way; while the lexicon holds that completions
+        // are down, which it rechecks every few minutes, it waits for the space. Ask the lexicon itself,
+        // not the raw spell checker: completions can return between its checks.
+        let answers = lexicon.startsWord("прив", language: "ru") != nil
+        #expect(early?.replacement == (answers ? "прив" : nil))
         #expect(
             detector.decidePrefix(
                 keys("hell"), typedIn: us, candidates: [us, russian], memory: Memory(), lexicon: lexicon)
