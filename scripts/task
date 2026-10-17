@@ -38,7 +38,8 @@ test_flags() {
 # makes one, shared by every Common Tools app.
 sign() {
     identity="Common Tools Development"
-    if security find-certificate -c "$identity" >/dev/null 2>&1; then
+    # Only a valid identity: one that's present but not trusted for code signing makes codesign fail.
+    if security find-identity -v -p codesigning | grep -q "\"$identity\""; then
         echo "==> signing $1 with '$identity'"
         codesign --force --sign "$identity" --identifier "$2" --options runtime "$1"
     else

@@ -27,6 +27,15 @@ default_branch() {
 
 current_branch() { git rev-parse --abbrev-ref HEAD; }
 
+# The full check, recorded against HEAD when the tree is clean, so the pre-push hook can skip running
+# the same check again on exactly the commit being pushed.
+check_and_record() {
+    "$root/scripts/task" check
+    if [ -z "$(git status --porcelain)" ]; then
+        git rev-parse HEAD >"$(git rev-parse --git-dir)/agent-checked"
+    fi
+}
+
 cmd="${1:-}"
 [ $# -gt 0 ] && shift
 
@@ -82,7 +91,7 @@ pr)
     branch="$(current_branch)"
     [ "$branch" != "$(default_branch)" ] || die "on the default branch; start a branch with 'scripts/agent start'"
     echo "==> checking"
-    "$root/scripts/task" check
+    check_and_record
     merged="the pull request for $branch already merged; put new commits on a new branch ('scripts/agent start'), then run 'scripts/agent done' here"
     state="$(gh pr view "$branch" --json state --jq .state 2>/dev/null || :)"
     case "$state" in
@@ -147,7 +156,7 @@ ship)
             # Test against what it will land on, not what it branched from.
             echo "==> $base moved; rebasing and checking again"
             git rebase --quiet "origin/$base" || die "conflicts with $base; resolve them, then run 'scripts/agent ship' again"
-            "$root/scripts/task" check
+            check_and_record
             # Auto-merge may have landed the pull request while the check ran, deleting the branch.
             merged() { [ "$(gh pr view "$branch" --json state --jq .state)" = "MERGED" ]; }
             merged && continue
