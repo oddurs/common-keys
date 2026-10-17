@@ -80,8 +80,10 @@ struct SpellServiceTests {
         let clock = ContinuousClock()
         let start = clock.now
         #expect(lexicon.isWord("привет", language: "ru") == true)
-        #expect(clock.now - start < .seconds(1))
+        // Four calls, one excused as a stall: 0.8 s of waiting, with room for a busy Mac's overhead.
+        // Unbounded, the probe would ask all 64 starts and take thirteen seconds.
         #expect(spelling.completionCalls <= 5)
+        #expect(clock.now - start < .seconds(2))
     }
 
     @Test func aWorkingDictionaryIsKnownAfterThreeAnswers() {
