@@ -1,35 +1,53 @@
 #!/bin/sh
 set -eu
-# Creates a self-signed code signing certificate in the login keychain, once, shared by every
-# Common Tools app.
+# Creates a self-signed code signing certificate in the login keychain, trusted for code signing,
+# shared by every Common Tools app. Run it once per Mac; running it again repairs trust and resets
+# this app's permission grants.
 #
-# macOS ties permissions such as Accessibility, and login items, to an app's signature. Ad-hoc
-# signatures change with every build, so every rebuild loses them. A certificate that stays put
-# keeps them. scripts/task build signs with it whenever it's there.
+# macOS ties permissions such as Accessibility and Screen Recording, and login items, to an app's
+# signature. Ad-hoc signatures change with every build, so every rebuild loses them. A certificate
+# that stays put keeps them. scripts/task build signs with it whenever it's valid.
 
 name="Common Tools Development"
 keychain="$HOME/Library/Keychains/login.keychain-db"
-
-if security find-certificate -c "$name" "$keychain" >/dev/null 2>&1; then
-    echo "==> '$name' is already in the login keychain; nothing to do"
-    exit 0
-fi
+bundle_id="com.oddurs.langsmart"
+# The privacy permissions this app asks for, as tccutil names them.
+permissions="Accessibility"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-echo "==> generating '$name' (valid ten years)"
-# The system LibreSSL writes PKCS#12 files that security import can read; OpenSSL 3 needs -legacy.
-/usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
-    -subj "/CN=$name" \
-    -addext "basicConstraints=critical,CA:false" \
-    -addext "keyUsage=critical,digitalSignature" \
-    -addext "extendedKeyUsage=critical,codeSigning" \
-    -keyout "$work/key.pem" -out "$work/cert.pem"
-/usr/bin/openssl pkcs12 -export -inkey "$work/key.pem" -in "$work/cert.pem" \
-    -name "$name" -out "$work/identity.p12" -passout pass:common-tools
+if security find-certificate -c "$name" "$keychain" >/dev/null 2>&1; then
+    echo "==> '$name' is already in the login keychain"
+    security find-certificate -c "$name" -p "$keychain" >"$work/cert.pem"
+else
+    echo "==> generating '$name' (valid ten years)"
+    # The system LibreSSL writes PKCS#12 files that security import can read; OpenSSL 3 needs -legacy.
+    /usr/bin/openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+        -subj "/CN=$name" \
+        -addext "basicConstraints=critical,CA:false" \
+        -addext "keyUsage=critical,digitalSignature" \
+        -addext "extendedKeyUsage=critical,codeSigning" \
+        -keyout "$work/key.pem" -out "$work/cert.pem"
+    /usr/bin/openssl pkcs12 -export -inkey "$work/key.pem" -in "$work/cert.pem" \
+        -name "$name" -out "$work/identity.p12" -passout pass:common-tools
+    echo "==> importing into the login keychain, usable by codesign"
+    security import "$work/identity.p12" -k "$keychain" -P common-tools -T /usr/bin/codesign >/dev/null
+fi
 
-echo "==> importing into the login keychain, usable by codesign"
-security import "$work/identity.p12" -k "$keychain" -P common-tools -T /usr/bin/codesign >/dev/null
+# An untrusted self-signed identity isn't valid for signing; trust it for code signing only.
+if security find-identity -v -p codesigning | grep -q "\"$name\""; then
+    echo "==> '$name' is trusted for code signing"
+else
+    echo "==> trusting '$name' for code signing (macOS asks for your password)"
+    security add-trusted-cert -r trustRoot -p codeSign -k "$keychain" "$work/cert.pem"
+fi
 
-echo "==> done. Rebuild with scripts/task build, then grant any permission an app asks for once more."
+# A permission granted to an earlier signature stays switched on in System Settings but no longer
+# applies. Clear it, so the app asks again and the new grant sticks.
+for service in $permissions; do
+    echo "==> resetting the $service permission for $bundle_id; grant it again when the app asks"
+    tccutil reset "$service" "$bundle_id"
+done
+
+echo "==> done. Rebuild with scripts/task build or scripts/task run."

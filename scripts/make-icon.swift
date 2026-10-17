@@ -1,7 +1,9 @@
 // Renders Resources/AppIcon.icns and docs/icon.png. Run: swift scripts/make-icon.swift
 //
-// The Common Tools icon family: a blue squircle with a frosted glass glyph. Only the glyph differs
-// between Common Stats, Common Keys, and Common Bar; keep the rest identical across the three repos.
+// The Common Tools icon family: a blue squircle with a frosted glass glyph. Only the glyph is this
+// app's own; the rest is the same in every app and comes from the standard in oddurs/common-tools.
+// After changing the glyph, copy a 128 px render into the standard's Resources/CommonTools/ too, so
+// every app's Settings shows the new icon.
 import AppKit
 
 // Shared look: Apple's 824 pt squircle on a 1024 canvas, a blue gradient body, and a frosted
