@@ -87,6 +87,23 @@ struct SpellServiceTests {
         #expect(spelling.completionCalls == 4)
     }
 
+    /// A spell service that answers the probe quickly but turns slow mid-harvest gives up within one
+    /// slow call, with nothing listed and completions counted as down.
+    @Test func aSlowHarvestGivesUp() throws {
+        let spelling = FakeSpellService(words: russian, completes: true)
+        let lexicon = SystemLexicon(spelling: spelling)
+        let russianKeyboard = try #require(InputSources.keyboard("com.apple.keylayout.Russian"))
+        lexicon.checkSpelling(for: russianKeyboard)
+        spelling.delay = .milliseconds(300)
+        let before = spelling.completionCalls
+        let clock = ContinuousClock()
+        let start = clock.now
+        #expect(lexicon.wordList(for: russianKeyboard) == nil)
+        #expect(clock.now - start < .seconds(1))
+        #expect(spelling.completionCalls == before + 1)
+        #expect(lexicon.startsWord("при", language: "ru") == nil)
+    }
+
     @Test func noWordListIsHarvestedWhileCompletionsAreDown() throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: "WorldKeyTests-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: folder) }

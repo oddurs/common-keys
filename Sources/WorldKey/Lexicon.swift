@@ -139,13 +139,37 @@ public final class SystemLexicon: Lexicon {
         guard let dictionary = dictionary(for: keyboard.baseLanguage),
             completionsWork(dictionary, language: keyboard.baseLanguage)
         else { return nil }
+        var harvest = Harvest(started: clock.now)
+        gather(keyboard.twoKeyStarts, dictionary, into: &harvest)
+        guard !harvest.failed else {
+            completionHealth[dictionary] = (false, clock.now)
+            return nil
+        }
+        return harvest.words.isEmpty ? nil : harvest.words.sorted()
+    }
+
+    /// A language's words, gathered start by start from completions.
+    private struct Harvest {
         var words: Set<String> = []
-        for start in keyboard.twoKeyStarts {
-            for word in self.words(startingWith: start, language: keyboard.baseLanguage) {
-                words.insert(word.lowercased())
+        let started: ContinuousClock.Instant
+        /// The spell service answered too slowly to finish without holding up whoever waits.
+        var failed = false
+    }
+
+    /// A healthy spell service completes a start in about ten milliseconds and a whole language in
+    /// a few seconds. Slower than this, harvesting stops and completions count as down until the
+    /// next check: a model is a refinement, not worth a stalled Mac.
+    static let harvestCallBudget = Duration.milliseconds(250)
+    static let harvestBudget = Duration.seconds(30)
+
+    private func gather(_ starts: some Sequence<String>, _ dictionary: String, into harvest: inout Harvest) {
+        for start in starts where !harvest.failed {
+            let asked = clock.now
+            for word in spelling.completions(start, dictionary: dictionary) { harvest.words.insert(word.lowercased()) }
+            if clock.now - asked > Self.harvestCallBudget || clock.now - harvest.started > Self.harvestBudget {
+                harvest.failed = true
             }
         }
-        return words.isEmpty ? nil : words.sorted()
     }
 
     /// Builds a keyboard's model without holding up typing: the word list comes from the cache when
@@ -168,10 +192,18 @@ public final class SystemLexicon: Lexicon {
         if let shipped = WordLists.shipped(language) {
             words = Set(shipped)
         } else if let dictionary = dictionary(for: language), completionsWork(dictionary, language: language) {
-            for (index, start) in keyboard.twoKeyStarts.enumerated() {
-                for word in self.words(startingWith: start, language: language) { words.insert(word.lowercased()) }
-                if index % 20 == 19 { await Task.yield() }
+            var harvest = Harvest(started: clock.now)
+            let starts = keyboard.twoKeyStarts
+            for chunk in stride(from: 0, to: starts.count, by: 20) where !harvest.failed {
+                gather(starts[chunk..<min(chunk + 20, starts.count)], dictionary, into: &harvest)
+                await Task.yield()
             }
+            // Too slow today: no model, and none cached, so the next launch tries again.
+            guard !harvest.failed else {
+                completionHealth[dictionary] = (false, clock.now)
+                return
+            }
+            words = harvest.words
         }
         guard !words.isEmpty else {
             modelless.insert(language)
