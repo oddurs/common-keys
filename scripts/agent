@@ -128,7 +128,10 @@ ship)
             echo "==> $base moved; rebasing and checking again"
             git rebase --quiet "origin/$base" || die "conflicts with $base; resolve them, then run 'scripts/agent ship' again"
             "$root/scripts/task" check
-            git push --quiet --force-with-lease origin "$branch"
+            # Auto-merge may have landed the pull request while the check ran, deleting the branch.
+            merged() { [ "$(gh pr view "$branch" --json state --jq .state)" = "MERGED" ]; }
+            merged && continue
+            git push --quiet --force-with-lease origin "$branch" || merged || die "could not push $branch"
         fi
         # gh pr checks exits 1 on a failure, 8 while pending; "no checks reported" means not started yet.
         checks=0
