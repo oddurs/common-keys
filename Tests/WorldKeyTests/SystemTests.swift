@@ -9,6 +9,7 @@ struct SystemTests {
     let russian = InputSources.keyboard("com.apple.keylayout.Russian")!
     let hebrew = InputSources.keyboard("com.apple.keylayout.Hebrew")!
     let greek = InputSources.keyboard("com.apple.keylayout.Greek")!
+    let german = InputSources.keyboard("com.apple.keylayout.German")!
     let korean = InputSources.keyboard("com.apple.inputmethod.Korean.2SetKorean")!
     let japanese = InputSources.keyboard("com.apple.inputmethod.Kotoeri.RomajiTyping.Japanese")!
     let lexicon = sharedLexicon
@@ -75,6 +76,13 @@ struct SystemTests {
     @Test(arguments: ["/etta", "/a[", "hallo"])
     func correctIcelandicIsLeftAlone(typed: String) {
         #expect(decide(typed, on: icelandic, with: us) == nil)
+    }
+
+    /// German nouns typed in lower case, "bär" and "cäsar", are unknown to the dictionary, which has
+    /// only "Bär" and "Cäsar". Read as U.S. they are "b'r" and "c'sar", which no dictionary has either.
+    @Test(arguments: ["b'r", "c'sar"])
+    func lowercaseGermanIsNotMadeAnElision(keys: String) {
+        #expect(decide(keys, on: german, with: us) == nil)
     }
 
     /// A fresh CI runner can answer Russian spelling queries with no completions at first (#3), and

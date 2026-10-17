@@ -19,6 +19,16 @@ struct FeatureTests {
         #expect(Weights.hand.score(slash) == -3)
     }
 
+    /// A spell checker passes "x'…" whenever the rest is a word, so its yes says nothing; its no does.
+    @Test func anElisionCountsOnlyAsUnknown() {
+        #expect(features("b'r", "en")[.unknownWord] == 1)
+        var lexicon = FakeLexicon()
+        lexicon.words["en"]?.insert("h'us")
+        let accepted = Scorer.features("h'us", language: "en", lexicon: lexicon)
+        #expect(accepted[.knownWord] == 0)
+        #expect(accepted[.unknownWord] == 0)
+    }
+
     @Test func aRealWordScoresAsBefore() {
         let thorn = features("þetta", "is")
         #expect(thorn[.knownWord] == 1)
