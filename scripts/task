@@ -1,9 +1,23 @@
 #!/bin/sh
 set -eu
 
-# The one seam CI and git hooks call. Verbs: fmt fmt:check lint test build check
+# The one seam CI and git hooks call. Verbs: fmt fmt:check lint test build check, plus package and
+# run. This file is the same in every Common Tools app; the values below come from
+# standard/apps.json in oddurs/common-tools.
 
 cd "$(dirname "$0")/.."
+
+name="Common Keys"
+executable="LangSmart"
+bundle_id="com.oddurs.langsmart"
+asset="CommonKeys"
+# Command-line tools built and shipped beside the app.
+tools="worldkey"
+
+sources="Package.swift Sources Tests scripts/make-icon.swift"
+app="build/$name.app"
+# The deployment target is written once, in Info.plist; the build follows it.
+min_macos="$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' Resources/Info.plist)"
 
 # Command Line Tools ship Swift Testing outside the default search paths;
 # Xcode does not need this.
@@ -19,20 +33,19 @@ test_flags() {
     esac
 }
 
-# macOS ties the Accessibility grant to the signature. A stable certificate keeps it across
-# rebuilds; an ad-hoc signature changes every build and loses it. scripts/dev-cert makes one.
+# macOS ties permissions such as Accessibility, and login items, to the signature. A stable
+# certificate keeps them across rebuilds; an ad-hoc signature changes every build. scripts/dev-cert
+# makes one, shared by every Common Tools app.
 sign() {
-    identity="LangSmart Development"
+    identity="Common Tools Development"
     if security find-certificate -c "$identity" >/dev/null 2>&1; then
         echo "==> signing $1 with '$identity'"
         codesign --force --sign "$identity" --identifier "$2" --options runtime "$1"
     else
-        echo "==> signing $1 ad-hoc; run scripts/dev-cert so Accessibility access survives rebuilds"
+        echo "==> signing $1 ad-hoc; run scripts/dev-cert to keep permissions across rebuilds"
         codesign --force --sign - --identifier "$2" --options runtime "$1"
     fi
 }
-
-sources="Package.swift Sources Tests scripts/make-icon.swift"
 
 case "${1:-}" in
 fmt)
@@ -51,39 +64,62 @@ lint)
     swift build -Xswiftc -warnings-as-errors
     ;;
 test)
-    echo "==> running tests"
+    echo "==> running tests${2:+ matching $2}"
     # shellcheck disable=SC2046
-    swift test $(test_flags)
+    swift test $(test_flags) ${2:+--filter "$2"}
     ;;
 build)
     # One build per architecture, joined with lipo: `--arch a --arch b`
     # needs Xcode's build system, which Command Line Tools lack.
-    apps=""
-    clis=""
+    dirs=""
     for arch in arm64 x86_64; do
+        triple="$arch-apple-macosx$min_macos"
         echo "==> building release for $arch"
-        triple="$arch-apple-macosx14.4"
         swift build -c release --triple "$triple"
-        bin="$(swift build -c release --triple "$triple" --show-bin-path)"
-        apps="$apps $bin/LangSmart"
-        clis="$clis $bin/worldkey"
+        dirs="$dirs $(swift build -c release --triple "$triple" --show-bin-path)"
     done
-    # The executable keeps its pre-rename name; Info.plist's CFBundleExecutable points at it.
-    app="build/Common Keys.app"
     echo "==> assembling $app"
     rm -rf "$app"
     mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+    # The bundle carries the product name; the executable keeps the target's name.
     # shellcheck disable=SC2086
-    lipo -create $apps -output "$app/Contents/MacOS/LangSmart"
+    lipo -create $(for dir in $dirs; do echo "$dir/$executable"; done) -output "$app/Contents/MacOS/$executable"
     cp Resources/Info.plist "$app/Contents/"
     cp Resources/AppIcon.icns "$app/Contents/Resources/"
+    # The Common Tools section of Settings shows every app's icon from here.
     cp -R Resources/CommonTools "$app/Contents/Resources/"
-    sign "$app" com.oddurs.langsmart
+    sign "$app" "$bundle_id"
     echo "==> built $app"
-    # shellcheck disable=SC2086
-    lipo -create $clis -output build/worldkey
-    sign build/worldkey worldkey
-    echo "==> built build/worldkey"
+    for tool in $tools; do
+        # shellcheck disable=SC2046
+        lipo -create $(for dir in $dirs; do echo "$dir/$tool"; done) -output "build/$tool"
+        sign "build/$tool" "$tool"
+        echo "==> built build/$tool"
+    done
+    ;;
+package)
+    # What a release publishes. The names carry no version, so
+    # releases/latest/download/<name>.zip always gets the newest.
+    [ -d "$app" ] || "$0" build
+    echo "==> packaging into dist/"
+    rm -rf dist
+    mkdir dist
+    # ditto keeps the bundle's signature and extended attributes intact.
+    ditto -c -k --keepParent "$app" "dist/$asset.zip"
+    for tool in $tools; do ditto -c -k "build/$tool" "dist/$tool.zip"; done
+    for zip in dist/*.zip; do (cd dist && shasum -a 256 "${zip#dist/}" >"${zip#dist/}.sha256"); done
+    ls -l dist
+    ;;
+run)
+    "$0" build
+    echo "==> relaunching $name"
+    # By process name: a fresh build isn't registered with Launch Services yet, so AppleScript
+    # can't always find it by bundle identifier.
+    if pgrep -x "$executable" >/dev/null; then
+        pkill -x "$executable"
+        while pgrep -x "$executable" >/dev/null; do sleep 0.2; done
+    fi
+    open "$app"
     ;;
 check)
     "$0" lint
@@ -91,7 +127,7 @@ check)
     "$0" build
     ;;
 *)
-    echo "usage: scripts/task {fmt|fmt:check|lint|test|build|check}" >&2
+    echo "usage: scripts/task {fmt|fmt:check|lint|test [name]|build|package|run|check}" >&2
     exit 2
     ;;
 esac

@@ -1,12 +1,13 @@
 #!/bin/sh
 set -eu
-# Creates a self-signed code signing certificate in the login keychain, once.
+# Creates a self-signed code signing certificate in the login keychain, once, shared by every
+# Common Tools app.
 #
-# macOS ties the Accessibility grant to the app's signature. Ad-hoc signatures change with every
-# build, so every rebuild lost the grant. A certificate that stays put keeps it.
+# macOS ties permissions such as Accessibility, and login items, to an app's signature. Ad-hoc
+# signatures change with every build, so every rebuild loses them. A certificate that stays put
+# keeps them. scripts/task build signs with it whenever it's there.
 
-# The pre-rename name, kept so existing installs keep their Accessibility grant.
-name="LangSmart Development"
+name="Common Tools Development"
 keychain="$HOME/Library/Keychains/login.keychain-db"
 
 if security find-certificate -c "$name" "$keychain" >/dev/null 2>&1; then
@@ -26,9 +27,9 @@ echo "==> generating '$name' (valid ten years)"
     -addext "extendedKeyUsage=critical,codeSigning" \
     -keyout "$work/key.pem" -out "$work/cert.pem"
 /usr/bin/openssl pkcs12 -export -inkey "$work/key.pem" -in "$work/cert.pem" \
-    -name "$name" -out "$work/identity.p12" -passout pass:langsmart
+    -name "$name" -out "$work/identity.p12" -passout pass:common-tools
 
 echo "==> importing into the login keychain, usable by codesign"
-security import "$work/identity.p12" -k "$keychain" -P langsmart -T /usr/bin/codesign >/dev/null
+security import "$work/identity.p12" -k "$keychain" -P common-tools -T /usr/bin/codesign >/dev/null
 
-echo "==> done. Next: scripts/task build, then allow Common Keys in Accessibility one last time."
+echo "==> done. Rebuild with scripts/task build, then grant any permission an app asks for once more."

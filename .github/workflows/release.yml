@@ -14,19 +14,19 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - run: scripts/task check
-      - name: Package
+      - name: Check the tag matches the app's version
         run: |
-          # ditto keeps the bundle's signature and extended attributes intact.
-          # The asset names carry no version, so releases/latest/download/CommonKeys.zip
-          # always points at the newest build.
-          ditto -c -k --keepParent "build/Common Keys.app" CommonKeys.zip
-          ditto -c -k build/worldkey worldkey.zip
-          shasum -a 256 CommonKeys.zip > CommonKeys.zip.sha256
-          shasum -a 256 worldkey.zip > worldkey.zip.sha256
+          version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)"
+          [ "v$version" = "$GITHUB_REF_NAME" ] || { echo "Info.plist says $version, the tag is $GITHUB_REF_NAME"; exit 1; }
+      - run: scripts/task check
+      - run: scripts/task package
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes --title "Common Keys ${GITHUB_REF_NAME#v}" \
-            CommonKeys.zip CommonKeys.zip.sha256 worldkey.zip worldkey.zip.sha256
+          version="${GITHUB_REF_NAME#v}"
+          name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' Resources/Info.plist)"
+          # The notes are this version's CHANGELOG section, the same text the site shows.
+          awk -v v="$version" 'index($0, "## [" v "]") == 1 { on = 1; next } on && /^## / { exit } on && /^\[/ { exit } on { print }' CHANGELOG.md > notes.md
+          [ -s notes.md ] || { echo "CHANGELOG.md has no section for $version"; exit 1; }
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$name $version" --notes-file notes.md dist/*

@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "LangSmart",
+    name: "CommonKeys",
     platforms: [.macOS("14.4")],
     products: [
         .library(name: "WorldKey", targets: ["WorldKey"]),
