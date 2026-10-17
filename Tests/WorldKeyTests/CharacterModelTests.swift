@@ -34,7 +34,12 @@ struct CharacterModelTests {
 }
 
 struct WordListTests {
-    @Test(arguments: ["th", "ka", "hy"])
+    static let shippedLanguages = [
+        "th", "ka", "hy", "am", "az", "be", "bn", "cy", "et", "fa", "gu", "hr", "kk", "kn", "ky", "lv", "mk", "ml",
+        "mn", "mr", "mt", "or", "si", "sk", "sq", "sr", "ur",
+    ]
+
+    @Test(arguments: shippedLanguages)
     func shippedListsLoad(language: String) throws {
         let words = try #require(WordLists.shipped(language))
         #expect(words.count > 3000)
@@ -56,6 +61,18 @@ struct WordListTests {
 
 @MainActor
 struct ListedWordTests {
+    /// On Ge'ez QWERTY a later key changes the character before it, so mid-word the screen shows no
+    /// prefix of the word. Starts are matched by keys, which still line up.
+    @Test func wordStartsAreMatchedByKeysNotText() throws {
+        let geez = try #require(InputSources.keyboard("com.apple.keylayout.Geez-QWERTY"))
+        let word = try #require(
+            WordLists.shipped("am")?.first { geez.strokes(for: $0) != nil && $0.unicodeScalars.count >= 3 })
+        let keys = try #require(geez.strokes(for: word))
+        let start = Array(keys.prefix(keys.count - 1))
+        #expect(sharedLexicon.startsListed(start, on: geez))
+        #expect(!sharedLexicon.startsListed([KeyStroke(12), KeyStroke(12), KeyStroke(12), KeyStroke(12)], on: geez))
+    }
+
     @Test func aListedWordIsEvidenceOnlyWhenListed() {
         let lexicon = sharedLexicon
         #expect(lexicon.isListed("იყო", language: "ka"))

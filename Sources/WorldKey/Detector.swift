@@ -66,7 +66,7 @@ public struct Detector {
         let original = current.text(for: strokes)
         guard !Self.looksLikeAddress(original) else { return nil }
         if let prefixWeights {
-            let base = Scorer.features(original, on: current, lexicon: lexicon, prefix: true)
+            let base = Scorer.features(original, on: current, lexicon: lexicon, prefix: true, strokes: strokes)
             return candidates.compactMap { target -> Decision? in
                 guard target.id != current.id, target.kind != .converting else { return nil }
                 let text = target.text(for: strokes)
@@ -131,7 +131,8 @@ public struct Detector {
         let original = current.text(for: strokes)
         return evidence(
             strokes, original: original,
-            base: Scorer.features(original, on: current, lexicon: lexicon, prefix: prefix), typedIn: current,
+            base: Scorer.features(original, on: current, lexicon: lexicon, prefix: prefix, strokes: strokes),
+            typedIn: current,
             readAs: candidate.text(for: strokes), on: candidate, memory: memory, lexicon: lexicon, prefix: prefix)
     }
 
@@ -139,7 +140,7 @@ public struct Detector {
         _ strokes: [KeyStroke], original: String, base: FeatureVector, typedIn current: any Keyboard,
         readAs text: String, on candidate: any Keyboard, memory: Memory, lexicon: some Lexicon, prefix: Bool = false
     ) -> FeatureVector {
-        let meant = Scorer.features(text, on: candidate, lexicon: lexicon, prefix: prefix)
+        let meant = Scorer.features(text, on: candidate, lexicon: lexicon, prefix: prefix, strokes: strokes)
         var evidence = meant - base
         evidence[.bothKnown] = base[.knownWord] * meant[.knownWord]
         evidence[.taught] = memory.boost(strokes, from: current.id, to: candidate.id)
@@ -233,11 +234,15 @@ enum Scorer {
     }
 
     /// The evidence about one reading of the keys, on the keyboard that reads them that way.
-    static func features(_ text: String, on keyboard: any Keyboard, lexicon: some Lexicon, prefix: Bool = false)
-        -> FeatureVector
-    {
+    /// `strokes` are the keys behind `text`, needed for the start of a word: see `startsListed`.
+    static func features(
+        _ text: String, on keyboard: any Keyboard, lexicon: some Lexicon, prefix: Bool = false,
+        strokes: [KeyStroke] = []
+    ) -> FeatureVector {
         guard keyboard.kind == .converting else {
-            return features(text, language: keyboard.baseLanguage, lexicon: lexicon, prefix: prefix)
+            return features(
+                text, language: keyboard.baseLanguage, lexicon: lexicon, prefix: prefix,
+                listedStart: { lexicon.startsListed(strokes, on: keyboard) })
         }
         // Only the shape of the reading says anything, and the longer a reading keeps to the
         // language's syllables, the less likely that is chance. An unknown method never wins alone.
@@ -273,9 +278,10 @@ enum Scorer {
 
     /// For a `prefix`, the start of a word still being typed, word evidence becomes whether some word
     /// starts this way.
-    static func features(_ text: String, language: String, lexicon: some Lexicon, prefix: Bool = false)
-        -> FeatureVector
-    {
+    static func features(
+        _ text: String, language: String, lexicon: some Lexicon, prefix: Bool = false,
+        listedStart: () -> Bool = { false }
+    ) -> FeatureVector {
         let (core, trailingCount) = trim(text)
         let alphabet = lexicon.alphabet(for: language)
         var features = FeatureVector()
@@ -308,8 +314,7 @@ enum Scorer {
             case nil:
                 // A reading has to earn its place some other way, such as a shipped word list.
                 features[.noDictionary] = 1
-                let listed =
-                    prefix ? lexicon.startsListed(word, language: language) : lexicon.isListed(word, language: language)
+                let listed = prefix ? listedStart() : lexicon.isListed(word, language: language)
                 if listed { features[.listedWord] = 1 }
             }
         }

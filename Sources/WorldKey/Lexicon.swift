@@ -18,8 +18,10 @@ public protocol Lexicon {
     /// Whether `word` is in the word list shipped for a language macOS has no dictionary for.
     /// A list is far from every word, so only being on it says anything.
     func isListed(_ word: String, language: String) -> Bool
-    /// Whether some word in the shipped list starts with `prefix`.
-    func startsListed(_ prefix: String, language: String) -> Bool
+    /// Whether some word in the shipped list is typed with keys that start with `strokes` on
+    /// `keyboard`. Keys rather than text: on some layouts, Ge'ez for one, a later key changes the
+    /// character before it, so what is on screen mid-word is no prefix of the word.
+    func startsListed(_ strokes: [KeyStroke], on keyboard: any Keyboard) -> Bool
 }
 
 extension Lexicon {
@@ -27,7 +29,7 @@ extension Lexicon {
     public func languageLikelihood(_ text: String, among languages: [String]) -> [String: Double] { [:] }
     public func typicality(_ text: String, on keyboard: any Keyboard, complete: Bool) -> Double? { nil }
     public func isListed(_ word: String, language: String) -> Bool { false }
-    public func startsListed(_ prefix: String, language: String) -> Bool { false }
+    public func startsListed(_ strokes: [KeyStroke], on keyboard: any Keyboard) -> Bool { false }
 }
 
 /// The spell checker as the lexicon uses it, so tests can stand in for a Mac in any state.
@@ -101,20 +103,19 @@ public final class SystemLexicon: Lexicon {
         return list.contains(word.lowercased())
     }
 
-    public func startsListed(_ prefix: String, language: String) -> Bool {
-        if let starts = listStarts[language] { return starts.contains(prefix.lowercased()) }
-        guard let shipped = WordLists.shipped(language) else { return false }
-        // Every start of every listed word up to eight letters: longer starts are rarely typed alone.
+    public func startsListed(_ strokes: [KeyStroke], on keyboard: any Keyboard) -> Bool {
+        let key = strokes.signature
+        if let starts = listStarts[keyboard.id] { return starts.contains(key) }
+        guard let shipped = WordLists.shipped(keyboard.baseLanguage) else { return false }
+        // The keys of every start of every listed word, up to ten keys: longer starts are rarely
+        // judged alone. Signatures ignore shift, so a start counts if any casing of it does.
         var starts: Set<String> = []
         for word in shipped {
-            var start = ""
-            for character in word.prefix(8) {
-                start.append(character)
-                starts.insert(start)
-            }
+            guard let keys = keyboard.strokes(for: word) else { continue }
+            for length in 1...min(10, keys.count) { starts.insert(Array(keys.prefix(length)).signature) }
         }
-        listStarts[language] = starts
-        return starts.contains(prefix.lowercased())
+        listStarts[keyboard.id] = starts
+        return starts.contains(key)
     }
 
     public func typicality(_ text: String, on keyboard: any Keyboard, complete: Bool) -> Double? {

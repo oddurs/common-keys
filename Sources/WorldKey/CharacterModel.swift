@@ -112,14 +112,7 @@ public struct CharacterModel: Sendable {
 /// Word lists shipped for languages macOS has no dictionary for, from `scripts/wordlists`.
 public enum WordLists {
     public static func shipped(_ language: String) -> [String]? {
-        let text: String? =
-            switch language {
-            case "th": thai
-            case "ka": georgian
-            case "hy": armenian
-            default: nil
-            }
-        return text?.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        text(language)?.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
     }
 }
 

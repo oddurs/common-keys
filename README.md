@@ -92,8 +92,11 @@ The engine is a library, `WorldKey`, in layers. Each layer knows nothing of the 
      how typical a reading is of the language. It grades what a dictionary can only accept or reject,
      and it covers names, slang and languages with no dictionary. Models are built on your Mac from
      the spell checker's own words, a few at a time after launch, and cached;
-   - for languages macOS has no dictionary for, a shipped word list (`WordLists`): Thai, Georgian
-     and Armenian, from the Leipzig Corpora Collection;
+   - for languages macOS has a keyboard for but no dictionary, a shipped list of 8,000 common words
+     (`WordLists`) from the Leipzig Corpora Collection. 27 languages: Albanian, Amharic, Armenian,
+     Azerbaijani, Belarusian, Bengali, Croatian, Estonian, Georgian, Gujarati, Kannada, Kazakh, Kyrgyz,
+     Latvian, Macedonian, Malayalam, Maltese, Marathi, Mongolian, Odia, Persian, Serbian, Sinhala,
+     Slovak, Thai, Urdu and Welsh;
    - what the user taught (`Memory`): words corrected, keys mixed up, and words typed and kept three
      times or more, which count as "you write this here".
 4. **Weights.** Each reading becomes a `FeatureVector`, and `Weights` turn the difference between two
@@ -147,6 +150,7 @@ fitted model:
 | U.S. + Thai | 0 → 0 | Thai on U.S. 58% → 100% |
 | U.S. + Georgian QWERTY | 2 → 0 | Georgian on U.S. 0% → 100% |
 | U.S. + Armenian HM QWERTY | 4 → 0 | Armenian on U.S. 51% → 100% |
+| U.S. + each of 24 more listed languages, from Albanian to Urdu | 0–7 → 0 | typed on U.S., 1–75% → 95–100% |
 
 Georgian and Armenian QWERTY layouts follow Latin sounds, so Georgian typed on U.S. reads as
 plausible Latin (`iyo` for `იყო`). Rules alone could not tell, and changed `ორ` to `or`. Judging a
@@ -154,7 +158,7 @@ word takes about 0.05–0.3 ms.
 
 ### Limits
 
-- Languages with neither a system dictionary nor a shipped word list, like Khmer or Lao, rely on
+- Languages with neither a system dictionary nor a shipped word list, like Khmer, Lao or Burmese, rely on
   spelling rules and what you teach. Auto-fixing is cautious there, and the convert shortcut and
   learning carry it.
 - Thai and other scripts written without spaces end a "word" only at a space.
@@ -214,5 +218,6 @@ Layout:
 MIT. See [LICENSE](LICENSE).
 
 The word lists in `Sources/WorldKey/WordLists` are derived from the [Leipzig Corpora
-Collection](https://wortschatz.uni-leipzig.de) (CC BY 4.0), whose corpora are built from Wikipedia
-text (CC BY-SA 4.0). `scripts/wordlists` regenerates them.
+Collection](https://wortschatz.uni-leipzig.de) (CC BY 4.0). Their corpora are built from Wikipedia
+text (CC BY-SA 4.0), except Estonian and Latvian, which are built from news text. Each file names its
+corpus. `scripts/wordlists` regenerates them.
