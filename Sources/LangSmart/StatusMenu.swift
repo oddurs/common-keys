@@ -37,8 +37,7 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         withObservationTracking {
             guard let button = item.button else { return }
             let layout = engine.currentLayout
-            button.title = layout?.flag ?? "⌨︎"
-            button.font = .systemFont(ofSize: 15)
+            button.image = layout.flatMap { Self.flagImage($0.flag) } ?? Self.keyboardImage
             // Dimmed, like a disabled menu item, while Common Keys is not fixing anything.
             button.appearsDisabled = !engine.isWorking
             button.toolTip = [layout?.name, engine.pausedIn.map { "Paused in \($0)" }]
@@ -46,6 +45,43 @@ final class StatusMenu: NSObject, NSMenuDelegate {
         } onChange: {
             Task { @MainActor [weak self] in self?.render() }
         }
+    }
+
+    private static let keyboardImage: NSImage? = {
+        let image = NSImage(systemSymbolName: "keyboard", accessibilityDescription: "Keyboard")
+        image?.isTemplate = true
+        return image
+    }()
+
+    /// A flag as an image cropped to its ink. As a title an emoji sits high: the button centres the
+    /// font's line, and the glyph fills the top of it. The button centres an image on the bar.
+    /// The ink is found by drawing, as an emoji's glyph is a bitmap its font reports only roughly.
+    static func flagImage(_ flag: String) -> NSImage? {
+        let scale: CGFloat = 2
+        let line = CTLineCreateWithAttributedString(
+            NSAttributedString(string: flag, attributes: [.font: NSFont.systemFont(ofSize: 15 * scale)]))
+        let canvas = CTLineGetImageBounds(line, nil).insetBy(dx: -4 * scale, dy: -4 * scale).integral
+        guard
+            let context = CGContext(
+                data: nil, width: Int(canvas.width), height: Int(canvas.height), bitsPerComponent: 8,
+                bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        context.textPosition = CGPoint(x: -canvas.minX, y: -canvas.minY)
+        CTLineDraw(line, context)
+        guard let pixels = context.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
+        let inked = { (x: Int, y: Int) in pixels[y * context.bytesPerRow + x * 4 + 3] > 0 }
+        // Rows from the top, as a bitmap context stores them and as cropping counts them.
+        let rows = (0..<context.height).filter { y in (0..<context.width).contains { inked($0, y) } }
+        let columns = (0..<context.width).filter { x in rows.contains { inked(x, $0) } }
+        guard let top = rows.first, let bottom = rows.last, let left = columns.first, let right = columns.last,
+            let image = context.makeImage()?.cropping(
+                to: CGRect(x: left, y: top, width: right - left + 1, height: bottom - top + 1))
+        else { return nil }
+        let flagImage = NSImage(
+            cgImage: image, size: NSSize(width: CGFloat(image.width) / scale, height: CGFloat(image.height) / scale))
+        flagImage.accessibilityDescription = flag
+        return flagImage
     }
 
     /// Card views exist only while the menu is open, so a closed menu costs nothing.

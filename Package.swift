@@ -14,5 +14,6 @@ let package = Package(
         .executableTarget(name: "LangSmart", dependencies: ["WorldKey"]),
         .executableTarget(name: "WorldKeyCLI", dependencies: ["WorldKey"]),
         .testTarget(name: "WorldKeyTests", dependencies: ["WorldKey"]),
+        .testTarget(name: "LangSmartTests", dependencies: ["LangSmart"]),
     ]
 )
