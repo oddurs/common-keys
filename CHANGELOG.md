@@ -12,6 +12,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- A slow or stuck system spelling service can no longer stall typing: Common Keys checks each language's spelling data at launch, gives the check half a second, and falls back to plain spell checking past that.
 - Words in a language whose spelling completions macOS has dropped, as it sometimes does for Russian, French or German, are fixed again: the plain spell check decides instead of reading every word as misspelled.
 - Correctly typed Georgian and Armenian words that also spell an English word on the U.S. layout, like ორ and ուներ, are no longer changed to English.
 

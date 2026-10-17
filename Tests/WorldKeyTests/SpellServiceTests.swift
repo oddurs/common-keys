@@ -10,6 +10,8 @@ final class FakeSpellService: SpellService {
     var words: Set<String>
     var completes: Bool
     var lenient: Bool
+    /// How long each completion takes, for a spell service under load.
+    var delay: Duration = .zero
     var languages: [String] { ["ru"] }
 
     init(words: Set<String>, completes: Bool, lenient: Bool = false) {
@@ -18,7 +20,11 @@ final class FakeSpellService: SpellService {
 
     func accepts(_ word: String, dictionary: String) -> Bool { lenient || words.contains(word) }
 
+    private(set) var completionCalls = 0
+
     func completions(_ prefix: String, dictionary: String) -> [String] {
+        completionCalls += 1
+        if delay > .zero { Thread.sleep(forTimeInterval: Double(delay.components.attoseconds) / 1e18) }
         guard completes else { return [] }
         // A full list for any start, as a working dictionary gives.
         return words.filter { $0.hasPrefix(prefix) } + (0..<20).map { "\(prefix)\($0)" }
@@ -47,6 +53,38 @@ struct SpellServiceTests {
     @Test func aLenientDictionaryWithoutCompletionsHasNoOpinion() {
         let lexicon = SystemLexicon(spelling: FakeSpellService(words: russian, completes: false, lenient: true))
         #expect(lexicon.isWord("руддщ", language: "ru") == nil)
+    }
+
+    /// A spell service taking a fifth of a second a call would hold a 64-call probe for thirteen
+    /// seconds; the probe gives up within its budget and falls back to the spell check.
+    /// The probe happens when the app asks at launch; a word typed later costs one lookup, not a probe.
+    @Test func checkingAtLaunchLeavesNothingForTheFirstWord() throws {
+        let spelling = FakeSpellService(words: russian, completes: true)
+        let lexicon = SystemLexicon(spelling: spelling)
+        lexicon.checkSpelling(for: try #require(InputSources.keyboard("com.apple.keylayout.Russian")))
+        let afterProbe = spelling.completionCalls
+        #expect(afterProbe > 1)
+        _ = lexicon.isWord("привет", language: "ru")
+        #expect(spelling.completionCalls == afterProbe + 1)
+    }
+
+    @Test func aSlowSpellServiceCannotStallTheProbe() {
+        let spelling = FakeSpellService(words: russian, completes: false)
+        spelling.delay = .milliseconds(200)
+        let lexicon = SystemLexicon(spelling: spelling)
+        let clock = ContinuousClock()
+        let start = clock.now
+        #expect(lexicon.isWord("привет", language: "ru") == true)
+        #expect(clock.now - start < .seconds(1))
+        #expect(spelling.completionCalls <= 5)
+    }
+
+    @Test func aWorkingDictionaryIsKnownAfterThreeAnswers() {
+        let spelling = FakeSpellService(words: russian, completes: true)
+        let lexicon = SystemLexicon(spelling: spelling)
+        _ = lexicon.startsWord("при", language: "ru")
+        // Three probe starts, then the start itself.
+        #expect(spelling.completionCalls == 4)
     }
 
     @Test func noWordListIsHarvestedWhileCompletionsAreDown() throws {
