@@ -111,6 +111,7 @@ func rounded(_ r: CGRect, _ radius: CGFloat) -> CGPath {
 
 // MARK: - Glyph
 
+// standard:begin glyph
 func text(_ ctx: CGContext, _ s: String, size: CGFloat, weight: NSFont.Weight, color: NSColor, center: CGPoint) {
     let font = NSFont.systemFont(ofSize: size, weight: weight)
     let attr = NSAttributedString(string: s, attributes: [.font: font, .foregroundColor: color])
@@ -134,6 +135,7 @@ func glyph(_ ctx: CGContext) {
             center: CGPoint(x: 622, y: 480))
     }
 }
+// standard:end glyph
 
 func render(_ px: Int, _ glyph: (CGContext) -> Void) -> Data {
     let rep = NSBitmapImageRep(

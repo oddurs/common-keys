@@ -5,8 +5,12 @@ set -eu
 # Commands: doctor start check commit pr ship sync done list
 
 root="$(git rev-parse --show-toplevel)"
-repo="$(basename "$(git -C "$root" rev-parse --path-format=absolute --git-common-dir | xargs dirname)")"
-worktrees="$(dirname "$(git -C "$root" rev-parse --path-format=absolute --git-common-dir | xargs dirname)")/.worktrees/$repo"
+main_checkout="$(git -C "$root" rev-parse --path-format=absolute --git-common-dir | xargs dirname)"
+# Worktrees are named after the GitHub repository, not the local folder, so paths match the docs
+# on every machine. Without an origin, the folder name will do.
+origin_url="$(git -C "$root" remote get-url origin 2>/dev/null || :)"
+repo="$(basename "${origin_url:-$main_checkout}" .git)"
+worktrees="$(dirname "$main_checkout")/.worktrees/$repo"
 
 die() {
     echo "agent: $*" >&2
@@ -79,15 +83,31 @@ pr)
     [ "$branch" != "$(default_branch)" ] || die "on the default branch; start a branch with 'scripts/agent start'"
     echo "==> checking"
     "$root/scripts/task" check
+    merged="the pull request for $branch already merged; put new commits on a new branch ('scripts/agent start'), then run 'scripts/agent done' here"
+    state="$(gh pr view "$branch" --json state --jq .state 2>/dev/null || :)"
+    case "$state" in
+    MERGED) die "$merged" ;;
+    CLOSED) die "the pull request for $branch was closed; reopen it or start a new branch" ;;
+    OPEN)
+        # Auto-merge lands the head it already has once checks pass, so it could merge before new
+        # commits arrive. Hold it while pushing; it's enabled again below, for the new head.
+        echo "==> pausing auto-merge while pushing"
+        gh pr merge "$branch" --disable-auto >/dev/null 2>&1 || :
+        [ "$(gh pr view "$branch" --json state --jq .state)" != "MERGED" ] || die "$merged"
+        ;;
+    esac
     echo "==> pushing $branch"
     git push --quiet --force-with-lease -u origin "$branch"
-    if gh pr view "$branch" --json number >/dev/null 2>&1; then
+    if [ "$state" = "OPEN" ]; then
         echo "==> pull request already open"
     else
         echo "==> opening pull request"
         # The first commit names the unit of work; later ones are fixes along the way.
         gh pr create --fill-first "$@"
     fi
+    # Only ever merge what is checked out here.
+    head="$(gh pr view "$branch" --json headRefOid --jq .headRefOid)"
+    [ "$head" = "$(git rev-parse HEAD)" ] || die "the pull request's head is $head, not this branch's HEAD; push again"
     title="$(gh pr view "$branch" --json title --jq .title)"
     echo "$title" | grep -Eq '^(feat|fix|chore|docs|perf|refactor|test|build|ci|style|revert)(\([a-z0-9._/-]+\))?!?: [^ ].*[^.]$' ||
         die "pull request title '$title' is not a Conventional Commit; fix it with gh pr edit --title"
@@ -133,10 +153,11 @@ ship)
             merged && continue
             git push --quiet --force-with-lease origin "$branch" || merged || die "could not push $branch"
         fi
+        # Only the checks that gate the merge: auto-merge goes ahead past any other failure.
         # gh pr checks exits 1 on a failure, 8 while pending; "no checks reported" means not started yet.
         checks=0
-        report="$(gh pr checks "$branch" 2>&1)" || checks=$?
-        case "$report" in *"no checks reported"*) checks=8 ;; esac
+        report="$(gh pr checks "$branch" --required 2>&1)" || checks=$?
+        case "$report" in *"no checks reported"* | *"no required checks reported"*) checks=8 ;; esac
         [ "$checks" -eq 1 ] && die "a check failed: $(gh pr view "$branch" --json url --jq .url)/checks"
         sleep 15
     done

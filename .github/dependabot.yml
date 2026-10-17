@@ -1,4 +1,4 @@
-# Common Keys has no package dependencies, so GitHub Actions is the only ecosystem to watch.
+# No Swift package dependencies, so GitHub Actions is the only ecosystem to watch.
 version: 2
 updates:
   - package-ecosystem: github-actions

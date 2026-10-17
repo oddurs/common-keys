@@ -8,7 +8,7 @@ file="$1"
 subject="$(sed -n '/^[^#]/{p;q;}' "$file")"
 
 if ! printf '%s\n' "$subject" | grep -Eq '^(feat|fix|chore|docs|perf|refactor|test|build|ci|style|revert)(\([a-z0-9._/-]+\))?!?: [^ ].*[^.]$'; then
-    echo "commit-msg: subject must be a Conventional Commit, e.g. 'fix(detector): keep short words that read in both'" >&2
+    echo "commit-msg: subject must be a Conventional Commit, e.g. 'fix(menu): keep the item on screen'" >&2
     echo "commit-msg: got: $subject" >&2
     exit 1
 fi

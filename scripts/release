@@ -1,0 +1,99 @@
+#!/bin/sh
+set -eu
+
+# Cuts a release:  scripts/release <major.minor.patch>
+#
+# 1. In a new worktree, moves the CHANGELOG's Unreleased notes under the version with today's date,
+#    updates the compare links, and bumps the version in Resources/Info.plist.
+# 2. Ships that through a pull request, which merges itself (scripts/agent ship).
+# 3. Tags the merge commit and waits for the Release workflow to publish it.
+# 4. Downloads the published zip and checks it is the new version.
+
+die() {
+    echo "release: $*" >&2
+    exit 1
+}
+
+version="${1:-}"
+echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || die "usage: scripts/release <major.minor.patch>"
+
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+git fetch --quiet --tags origin
+git rev-parse --quiet --verify "refs/tags/v$version" >/dev/null && die "v$version already exists"
+previous="$(git tag --list 'v*' --sort=-v:refname | head -n 1)"
+url="$(git remote get-url origin | sed -E 's#^git@github.com:#https://github.com/#; s#\.git$##')"
+asset="$(sed -n 's/^asset="\(.*\)".*/\1/p' scripts/task)"
+[ -n "$asset" ] || die "scripts/task has no asset= line"
+
+# Refuse an empty release: the notes are what the site and the release page show.
+notes="$(git show origin/main:CHANGELOG.md | awk '
+    index($0, "## [Unreleased]") == 1 { on = 1; next }
+    on && (/^## / || /^\[/) { exit }
+    on && /^- / { n++ }
+    END { print n + 0 }')"
+[ "$notes" -gt 0 ] || die "nothing under ## [Unreleased] in CHANGELOG.md on main; write the release notes first"
+
+echo "==> preparing $version (previous: ${previous:-none})"
+path="$("$root/scripts/agent" start "chore/release-$version" | sed -n 's/^cd //p')"
+cd "$path"
+awk -v v="$version" -v d="$(date +%Y-%m-%d)" -v url="$url" -v prev="$previous" '
+    index($0, "## [Unreleased]") == 1 { print; print ""; print "## [" v "] - " d; next }
+    index($0, "[Unreleased]: ") == 1 {
+        print "[Unreleased]: " url "/compare/v" v "...HEAD"
+        if (prev != "") print "[" v "]: " url "/compare/" prev "...v" v
+        else print "[" v "]: " url "/releases/tag/v" v
+        next
+    }
+    { print }' CHANGELOG.md >CHANGELOG.md.new
+mv CHANGELOG.md.new CHANGELOG.md
+plist=Resources/Info.plist
+build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" -c "Set :CFBundleVersion $((build + 1))" "$plist"
+name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$plist")"
+
+body="$(mktemp)"
+trap 'rm -f "$body"' EXIT
+cat >"$body" <<EOF
+## Problem
+
+The changes under \`[Unreleased]\` are ready to ship as $name $version.
+
+## Approach
+
+Made by \`scripts/release $version\`: moves the Unreleased notes under $version with today's date, updates the compare links, and bumps \`CFBundleShortVersionString\` to $version and \`CFBundleVersion\` to $((build + 1)). Once this merges, the script tags the merge commit and the Release workflow publishes it.
+
+## Look at sceptically
+
+- The notes under $version become the release page and the site's "What's new"; read them as a user would.
+EOF
+"$root/scripts/agent" ship "chore: release $version" \
+    "Dates the unreleased notes as $version and bumps the version, so the tag can be cut from this merge." \
+    --body-file "$body"
+
+cd "$root"
+sha="$(gh pr list --state merged --head "chore/release-$version" --json mergeCommit --jq ".[0].mergeCommit.oid // empty")"
+[ -n "$sha" ] || die "can't find the merge commit of chore/release-$version"
+echo "==> tagging $sha as v$version"
+git fetch --quiet origin
+git tag -a "v$version" "$sha" -m "$name $version"
+git push --quiet origin "v$version"
+
+echo "==> waiting for the Release workflow"
+run=""
+for _ in $(seq 1 30); do
+    run="$(gh run list --workflow Release --branch "v$version" --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
+    [ -n "$run" ] && break
+    sleep 5
+done
+[ -n "$run" ] || die "the Release workflow didn't start for v$version"
+gh run watch "$run" --exit-status >/dev/null || die "the Release workflow failed: $url/actions/runs/$run"
+
+echo "==> checking the published download"
+check="$(mktemp -d)"
+trap 'rm -rf "$check" "$body"' EXIT
+curl -fsSL -o "$check/$asset.zip" "$url/releases/latest/download/$asset.zip"
+(cd "$check" && ditto -x -k "$asset.zip" .)
+published="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$check/$name.app/Contents/Info.plist")"
+[ "$published" = "$version" ] || die "the latest download is $published, not $version"
+echo "==> released $name $version: $url/releases/tag/v$version"
