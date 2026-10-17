@@ -13,6 +13,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 ### Fixed
 
+- The flag in the menu bar sits level with the other menu bar icons instead of slightly high. With no layout to show, it shows a keyboard symbol that follows the menu bar's colour.
 - A slow system spelling service can no longer freeze Common Keys at launch while it learns each language's spelling: it gives up after a slow answer and tries again later.
 - A slow or stuck system spelling service can no longer stall typing: Common Keys checks each language's spelling data at launch, gives the check half a second, and falls back to plain spell checking past that.
 - Words in a language whose spelling completions macOS has dropped, as it sometimes does for Russian, French or German, are fixed again: the plain spell check decides instead of reading every word as misspelled.
