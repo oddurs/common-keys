@@ -304,12 +304,13 @@ enum Scorer {
         }
         if clean && letters > 0 { features[.clean] = 1 }
         // Spell checkers read "x'…" as an elision, like "l'homme", and accept it whenever the rest is
-        // a word. That makes "h'us", which is "hús" on the wrong layout, pass as English.
+        // a word. That makes "h'us", which is "hús" on the wrong layout, pass as English. Their no still
+        // counts: without it "b'r" would beat "bär", which is unknown only as the lowercased "Bär".
         let elided = core.count > 2 && joiners.contains(core[core.index(after: core.startIndex)])
-        if core.count >= 2, !elided {
+        if core.count >= 2 {
             let word = String(core)
             switch prefix ? lexicon.startsWord(word, language: language) : lexicon.isWord(word, language: language) {
-            case true?: features[.knownWord] = 1
+            case true?: if !elided { features[.knownWord] = 1 }
             case false?: features[.unknownWord] = 1
             case nil:
                 // A reading has to earn its place some other way, such as a shipped word list.
