@@ -12,6 +12,8 @@ final class FakeSpellService: SpellService {
     var lenient: Bool
     /// How long each completion takes, for a spell service under load.
     var delay: Duration = .zero
+    /// How many of the coming completions take `delay`, or nil for all of them.
+    var slowCalls: Int?
     var languages: [String] { ["ru"] }
 
     init(words: Set<String>, completes: Bool, lenient: Bool = false) {
@@ -24,7 +26,10 @@ final class FakeSpellService: SpellService {
 
     func completions(_ prefix: String, dictionary: String) -> [String] {
         completionCalls += 1
-        if delay > .zero { Thread.sleep(forTimeInterval: Double(delay.components.attoseconds) / 1e18) }
+        if delay > .zero, slowCalls.map({ $0 > 0 }) ?? true {
+            slowCalls = slowCalls.map { $0 - 1 }
+            Thread.sleep(forTimeInterval: Double(delay.components.attoseconds) / 1e18)
+        }
         guard completes else { return [] }
         // A full list for any start, as a working dictionary gives.
         return words.filter { $0.hasPrefix(prefix) } + (0..<20).map { "\(prefix)\($0)" }
@@ -75,8 +80,10 @@ struct SpellServiceTests {
         let clock = ContinuousClock()
         let start = clock.now
         #expect(lexicon.isWord("привет", language: "ru") == true)
-        #expect(clock.now - start < .seconds(1))
+        // Four calls, one excused as a stall: 0.8 s of waiting, with room for a busy Mac's overhead.
+        // Unbounded, the probe would ask all 64 starts and take thirteen seconds.
         #expect(spelling.completionCalls <= 5)
+        #expect(clock.now - start < .seconds(2))
     }
 
     @Test func aWorkingDictionaryIsKnownAfterThreeAnswers() {
@@ -87,8 +94,8 @@ struct SpellServiceTests {
         #expect(spelling.completionCalls == 4)
     }
 
-    /// A spell service that answers the probe quickly but turns slow mid-harvest gives up within one
-    /// slow call, with nothing listed and completions counted as down.
+    /// A spell service that answers the probe quickly but turns slow mid-harvest gives up at its
+    /// second slow call, with nothing listed and completions counted as down.
     @Test func aSlowHarvestGivesUp() throws {
         let spelling = FakeSpellService(words: russian, completes: true)
         let lexicon = SystemLexicon(spelling: spelling)
@@ -100,8 +107,26 @@ struct SpellServiceTests {
         let start = clock.now
         #expect(lexicon.wordList(for: russianKeyboard) == nil)
         #expect(clock.now - start < .seconds(1))
-        #expect(spelling.completionCalls == before + 1)
+        #expect(spelling.completionCalls == before + 2)
         #expect(lexicon.startsWord("при", language: "ru") == nil)
+    }
+
+    /// One stall, as any call can have on a busy Mac, is not a dictionary without completions.
+    @Test func oneStallDuringTheProbeIsExcused() {
+        let spelling = FakeSpellService(words: russian, completes: true)
+        (spelling.delay, spelling.slowCalls) = (.milliseconds(600), 1)
+        let lexicon = SystemLexicon(spelling: spelling)
+        #expect(lexicon.startsWord("при", language: "ru") == true)
+    }
+
+    @Test func oneStallDuringTheHarvestIsExcused() throws {
+        let spelling = FakeSpellService(words: russian, completes: true)
+        let lexicon = SystemLexicon(spelling: spelling)
+        let russianKeyboard = try #require(InputSources.keyboard("com.apple.keylayout.Russian"))
+        lexicon.checkSpelling(for: russianKeyboard)
+        (spelling.delay, spelling.slowCalls) = (.milliseconds(300), 1)
+        #expect(lexicon.wordList(for: russianKeyboard)?.contains("привет") == true)
+        #expect(lexicon.startsWord("при", language: "ru") == true)
     }
 
     @Test func noWordListIsHarvestedWhileCompletionsAreDown() throws {

@@ -155,11 +155,13 @@ public final class SystemLexicon: Lexicon {
         let started: ContinuousClock.Instant
         /// The spell service answered too slowly to finish without holding up whoever waits.
         var failed = false
+        var slowCalls = 0
     }
 
     /// A healthy spell service completes a start in about ten milliseconds and a whole language in
     /// a few seconds. Slower than this, harvesting stops and completions count as down until the
-    /// next check: a model is a refinement, not worth a stalled Mac.
+    /// next check: a model is a refinement, not worth a stalled Mac. One slow call is excused: on a
+    /// busy Mac any call can stall once, and a second is what tells a slow service from load.
     static let harvestCallBudget = Duration.milliseconds(250)
     static let harvestBudget = Duration.seconds(30)
 
@@ -167,9 +169,8 @@ public final class SystemLexicon: Lexicon {
         for start in starts where !harvest.failed {
             let asked = clock.now
             for word in spelling.completions(start, dictionary: dictionary) { harvest.words.insert(word.lowercased()) }
-            if clock.now - asked > Self.harvestCallBudget || clock.now - harvest.started > Self.harvestBudget {
-                harvest.failed = true
-            }
+            if clock.now - asked > Self.harvestCallBudget { harvest.slowCalls += 1 }
+            if harvest.slowCalls > 1 || clock.now - harvest.started > Self.harvestBudget { harvest.failed = true }
         }
     }
 
@@ -283,13 +284,18 @@ public final class SystemLexicon: Lexicon {
         let start = clock.now
         var full = 0
         var works = false
+        // The slowest call is left out of the budget, so one stall on a busy Mac doesn't read as a
+        // dictionary without completions.
+        var slowest = Duration.zero
         for prefix in starts {
+            let asked = clock.now
             if spelling.completions(prefix, dictionary: dictionary).count >= 10 { full += 1 }
+            slowest = max(slowest, clock.now - asked)
             if full >= 3 {
                 works = true
                 break
             }
-            if clock.now - start > Self.probeBudget { break }
+            if clock.now - start - slowest > Self.probeBudget { break }
         }
         completionHealth[dictionary] = (works, clock.now)
         return works
