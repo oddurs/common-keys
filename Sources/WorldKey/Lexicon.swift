@@ -86,6 +86,7 @@ public final class SystemLexicon: Lexicon {
     /// and drops the data behind them on its own, so a dictionary can spell-check without completing.
     private var completionHealth: [String: (works: Bool, checked: ContinuousClock.Instant)] = [:]
     private var acceptsNonsense: [String: Bool] = [:]
+    private var probeAlphabets: [String: [String]] = [:]
     private let clock = ContinuousClock()
 
     public init(spelling: any SpellService = SystemSpellService()) {
@@ -212,6 +213,13 @@ public final class SystemLexicon: Lexicon {
         return completions(prefix, dictionary) > 0
     }
 
+    /// Asks whether the keyboard's dictionary completes words, so the answer is ready before the
+    /// first word typed in it: a probe makes up to 64 spell-checker calls.
+    public func checkSpelling(for keyboard: any Keyboard) {
+        guard keyboard.kind != .converting, let dictionary = dictionary(for: keyboard.baseLanguage) else { return }
+        _ = completionsWork(dictionary, language: keyboard.baseLanguage)
+    }
+
     /// Whether `dictionary` completes words right now. A working one returns a full list for many
     /// two-letter starts across its alphabet; with its data gone it returns nothing, or a few stray
     /// English names that start the same way. Asked again every few minutes, in the background,
@@ -227,6 +235,11 @@ public final class SystemLexicon: Lexicon {
         return probeCompletions(dictionary, language: language)
     }
 
+    /// How long a probe may take. A spell service under load can take seconds to answer each
+    /// call, and the probe can run on the main thread, so past this it gives up and reports no
+    /// completions: the safe answer, which falls back to the spell check alone.
+    static let probeBudget = Duration.milliseconds(500)
+
     @discardableResult
     private func probeCompletions(_ dictionary: String, language: String) -> Bool {
         let letters = probeLetters(language)
@@ -234,8 +247,17 @@ public final class SystemLexicon: Lexicon {
         let syllabic =
             letters.first.flatMap { $0.unicodeScalars.first }.map { (0xAC00...0xD7A3).contains($0.value) } ?? false
         let starts = syllabic ? letters : letters.flatMap { first in letters.map { first + $0 } }
-        let full = starts.filter { spelling.completions($0, dictionary: dictionary).count >= 10 }.count
-        let works = full >= 3
+        let start = clock.now
+        var full = 0
+        var works = false
+        for prefix in starts {
+            if spelling.completions(prefix, dictionary: dictionary).count >= 10 { full += 1 }
+            if full >= 3 {
+                works = true
+                break
+            }
+            if clock.now - start > Self.probeBudget { break }
+        }
         completionHealth[dictionary] = (works, clock.now)
         return works
     }
@@ -254,6 +276,13 @@ public final class SystemLexicon: Lexicon {
     /// Eight letters spread across the language's alphabet, as starts to probe completions with.
     /// Spread rather than the first few, which in some alphabets are rare, like Arabic's hamza forms.
     private func probeLetters(_ language: String) -> [String] {
+        if let known = probeAlphabets[language] { return known }
+        let letters = spreadLetters(language)
+        probeAlphabets[language] = letters
+        return letters
+    }
+
+    private func spreadLetters(_ language: String) -> [String] {
         guard let alphabet = alphabet(for: language) else { return [] }
         var letters: [String] = []
         for value in UInt32(0x41)...0xD7A3 {

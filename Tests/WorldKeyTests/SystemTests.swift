@@ -83,7 +83,9 @@ struct SystemTests {
     func waitForRussianCompletions() async throws -> Bool {
         let clock = ContinuousClock()
         let start = clock.now
-        while SystemLexicon().startsWord("прив", language: "ru") != true {
+        // Raw completions, not `startsWord`: that caches the dictionary's health for minutes.
+        let lexicon = SystemLexicon()
+        while lexicon.words(startingWith: "прив", language: "ru").count < 10 {
             guard clock.now - start < .seconds(60) else {
                 print("Russian completions did not answer for 60 seconds; checking the fallback instead")
                 return false

@@ -540,6 +540,9 @@ final class Engine {
         let lexicon = lexicon
         Task {
             for keyboard in keyboards {
+                // Probed here, between key presses, rather than inside the first one in this language.
+                lexicon.checkSpelling(for: keyboard)
+                await Task.yield()
                 do {
                     try await lexicon.prepareModel(for: keyboard, cache: Self.folder.appending(path: "Words"))
                 } catch {
